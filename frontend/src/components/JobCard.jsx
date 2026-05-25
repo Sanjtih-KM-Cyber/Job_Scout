@@ -14,12 +14,13 @@ function companyColor(name = '') {
 }
 
 export function JobCard({ job, onDraftOutreach }) {
-  const link = job.sourceUrl || buildLink(job.portal, job.title, job.company, job.city);
-  const initials = (job.company || '').slice(0, 2).toUpperCase();
+  const link        = job.sourceUrl || buildLink(job.portal, job.title, job.company, job.city);
+  const initials    = (job.company || '').slice(0, 2).toUpperCase();
   const accentColor = companyColor(job.company);
+  const match       = job.matchResult; // populated by filterByQualification()
 
   function handleOutreach(e) {
-    e.preventDefault();  // don't navigate the card link
+    e.preventDefault();
     e.stopPropagation();
     onDraftOutreach(job);
   }
@@ -42,6 +43,22 @@ export function JobCard({ job, onDraftOutreach }) {
         <div className="job-title">{job.title}</div>
         <div className="company-name">{job.company}</div>
 
+        {/* Qualification match badge — only shown when resume was uploaded */}
+        {match && (
+          <div
+            className="match-badge"
+            style={{ '--match-color': match.color }}
+            title={`${match.reason}${match.matchedSkills.length ? ` · Skills: ${match.matchedSkills.join(', ')}` : ''}`}
+          >
+            <div className="match-bar">
+              <div className="match-fill" style={{ width: `${match.score}%`, background: match.color }} />
+            </div>
+            <span className="match-label" style={{ color: match.color }}>
+              {match.score}% · {match.label}
+            </span>
+          </div>
+        )}
+
         {/* Salary Honesty — badge only if real numeric value exists */}
         {job.salary && (
           <div className="salary-badge">💰 {job.salary}</div>
@@ -50,17 +67,19 @@ export function JobCard({ job, onDraftOutreach }) {
         <div className="card-meta">
           <span className="meta-chip">📍 {job.city}</span>
           {job.experience && <span className="meta-chip">🎓 {job.experience}</span>}
+          {/* Show matched skills as chips if available */}
+          {match?.matchedSkills?.slice(0, 2).map(s => (
+            <span key={s} className="meta-chip skill-chip">✓ {s}</span>
+          ))}
         </div>
       </div>
 
       <div className="card-footer">
         <span className="posted-time">🕐 {job.posted}</span>
         <div className="card-actions">
-          {/* Outreach button */}
           <button className="btn-outreach" onClick={handleOutreach} title="Draft a recruiter message">
             ✍️ Outreach
           </button>
-          {/* Deep link apply button */}
           <a
             className="apply-link"
             href={link}

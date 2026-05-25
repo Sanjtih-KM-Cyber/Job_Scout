@@ -1,64 +1,46 @@
-// frontend/src/App.jsx
-// Master orchestrator — wires all features together:
-//   ✅ Resume AI Matcher
-//   ✅ Role-First Discovery Search
-//   ✅ Intelligent Multi-Word Scrubbing (in SearchPanel)
-//   ✅ Priority Bias Filtering
-//   ✅ Total Salary Honesty (in JobCard — badge only on real values)
-//   ✅ 1-to-1 Deep Linking (in JobCard)
-//   ✅ 5-Job Integrity Pledge (no padding, backend enforces)
-//   ✅ Refresh Pipeline Flush (seen-company exclusion)
-//   ✅ Context-Aware Recruiter Outreach Drafts
-
 import { useState, useRef } from 'react';
-import { Header }         from './components/Header.jsx';
-import { SearchPanel }    from './components/SearchPanel.jsx';
-import { FilterBar }      from './components/FilterBar.jsx';
-import { JobGrid }        from './components/JobGrid.jsx';
-import { SavedSearches }  from './components/SavedSearches.jsx';
-import { OutreachModal }  from './components/OutreachModal.jsx';
-import { useTheme }       from './hooks/useTheme.js';
-import { useJobSearch }   from './hooks/useJobSearch.js';
+import { Header }           from './components/Header.jsx';
+import { SearchPanel }      from './components/SearchPanel.jsx';
+import { FilterBar }        from './components/FilterBar.jsx';
+import { JobGrid }          from './components/JobGrid.jsx';
+import { SavedSearches }    from './components/SavedSearches.jsx';
+import { OutreachModal }    from './components/OutreachModal.jsx';
+import { useTheme }         from './hooks/useTheme.js';
+import { useJobSearch }     from './hooks/useJobSearch.js';
 import { useSavedSearches } from './hooks/useSavedSearches.js';
-import { useOutreach }    from './hooks/useOutreach.js';
+import { useOutreach }      from './hooks/useOutreach.js';
 
 export default function App() {
-  const { theme, toggle: toggleTheme }             = useTheme();
-  const { jobs, meta, status, error, search }      = useJobSearch();
-  const { saved, saveSearch, removeSearch, clearAll } = useSavedSearches();
+  const { theme, toggle: toggleTheme }               = useTheme();
+  const { jobs, meta, status, error, search }        = useJobSearch();
+  const { saved, saveSearch, removeSearch, clearAll }= useSavedSearches();
   const { outreachJob, outreachDraft, outreachStatus, outreachError, openOutreach, closeOutreach } = useOutreach();
 
-  const [filter, setFilter]       = useState('all');
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [lastParams, setLastParams] = useState(null);
-  const [justSaved, setJustSaved]   = useState(false);
+  const [filter, setFilter]             = useState('all');
+  const [drawerOpen, setDrawerOpen]     = useState(false);
+  const [lastParams, setLastParams]     = useState(null);
+  const [justSaved, setJustSaved]       = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Resume data stored in ref so OutreachModal can personalize against it
+  // Resume data — stored so JobGrid can score jobs against it
   const resumeDataRef = useRef(null);
 
-  // ── Search ───────────────────────────────────────────────────────────────
   async function handleSearch(params, isRefresh = false) {
     setLastParams(params);
     if (!isRefresh) setFilter('all');
     await search({ ...params, isRefresh });
   }
 
-  // ── Refresh Pipeline Flush ───────────────────────────────────────────────
-  // Sends every company the user already saw as an exclusion payload.
-  // Backend blocks those out, guaranteeing a completely fresh batch.
   async function handleRefresh() {
     if (!lastParams || status === 'loading') return;
     setIsRefreshing(true);
-    await handleSearch(lastParams, true /* isRefresh */);
+    await handleSearch(lastParams, true);
     setIsRefreshing(false);
   }
 
-  // ── Saved searches ────────────────────────────────────────────────────────
   function handleLoadSaved(s) {
     const params = {
-      role: s.role,
-      city: s.city,
+      role: s.role, city: s.city,
       experience: s.experience,
       priorityCompanies: s.priorityCompanies || [],
     };
@@ -73,14 +55,8 @@ export default function App() {
     setTimeout(() => setJustSaved(false), 2000);
   }
 
-  // ── Outreach ──────────────────────────────────────────────────────────────
-  function handleDraftOutreach(job) {
-    openOutreach(job, resumeDataRef.current);
-  }
-
-  // ── Resume extracted callback ─────────────────────────────────────────────
   function handleResumeExtracted(data) {
-    resumeDataRef.current = data;  // store for outreach personalization
+    resumeDataRef.current = data;
   }
 
   const showResults = status === 'loading' || status === 'success' || status === 'error';
@@ -95,13 +71,11 @@ export default function App() {
       />
 
       <main className="main">
-        {/* ── Hero ── */}
         <div className="hero">
           <h1>The job market,<br /><em>unfiltered.</em></h1>
           <p>Real-time discovery across LinkedIn, Indeed &amp; Naukri. No ads, no stale data, no ghost links.</p>
         </div>
 
-        {/* ── Search Panel ── */}
         <div className="search-wrap">
           <SearchPanel
             onSearch={handleSearch}
@@ -110,7 +84,6 @@ export default function App() {
           />
         </div>
 
-        {/* ── Results ── */}
         {showResults && (
           <div className="results-wrap">
             <div className="results-header">
@@ -123,20 +96,15 @@ export default function App() {
                 </div>
               )}
               <div className="results-actions">
-                {/* ── 5-Job Integrity Pledge badge ── */}
                 {status === 'success' && (
-                  <div className="integrity-badge" title="We show only real jobs — no padding, no fabrications">
-                    {jobs.length} real {jobs.length === 1 ? 'result' : 'results'}
-                  </div>
+                  <div className="integrity-badge">{jobs.length} real results</div>
                 )}
-
-                {/* ── Refresh Pipeline Flush button ── */}
                 {status === 'success' && lastParams && (
                   <button
                     className={`btn-refresh ${isRefreshing ? 'spinning' : ''}`}
                     onClick={handleRefresh}
                     disabled={isRefreshing || status === 'loading'}
-                    title="Flush seen companies and pull a fresh batch"
+                    title="Fetch a fresh batch of jobs"
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <polyline points="23 4 23 10 17 10"/>
@@ -145,8 +113,6 @@ export default function App() {
                     Refresh Listings
                   </button>
                 )}
-
-                {/* ── Save search ── */}
                 <button
                   className={`btn-save-search ${justSaved ? 'saved' : ''}`}
                   onClick={handleSave}
@@ -167,22 +133,21 @@ export default function App() {
               jobs={jobs}
               status={status}
               filter={filter}
-              onDraftOutreach={handleDraftOutreach}
+              resume={resumeDataRef.current}
+              onDraftOutreach={job => openOutreach(job, resumeDataRef.current)}
             />
           </div>
         )}
 
-        {/* ── Idle state ── */}
         {status === 'idle' && (
           <div className="empty-state">
             <div className="empty-icon">🔭</div>
             <h3>Ready to scan the market</h3>
-            <p>Enter a role and city above — or drop your resume for instant auto-fill</p>
+            <p>Enter a role and city above — or drop your resume for instant auto-fill + qualification matching</p>
           </div>
         )}
       </main>
 
-      {/* ── Saved Searches Drawer ── */}
       {drawerOpen && (
         <SavedSearches
           saved={saved}
@@ -193,7 +158,6 @@ export default function App() {
         />
       )}
 
-      {/* ── Outreach Modal ── */}
       {outreachJob && (
         <OutreachModal
           job={outreachJob}

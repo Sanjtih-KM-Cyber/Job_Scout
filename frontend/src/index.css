@@ -705,3 +705,58 @@ a { text-decoration: none; color: inherit; }
   background: var(--surface2); color: var(--text-muted);
   border: 1px solid var(--border2);
 }
+
+/* ════════════════════════════════════════
+   EXPERIENCE NUMBER INPUT
+   ════════════════════════════════════════ */
+.exp-input-wrap {
+  position: relative; display: flex; align-items: center;
+}
+.exp-input {
+  padding-right: 36px !important;
+  /* hide browser number arrows */
+  -moz-appearance: textfield;
+}
+.exp-input::-webkit-outer-spin-button,
+.exp-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.exp-unit {
+  position: absolute; right: 12px;
+  font-size: 12px; color: var(--text-muted); pointer-events: none;
+}
+.exp-hint {
+  font-size: 11px; color: var(--accent); margin-top: 4px;
+}
+
+/* ════════════════════════════════════════
+   QUALIFICATION MATCH BADGE
+   ════════════════════════════════════════ */
+.match-badge {
+  margin-top: 8px; display: flex; flex-direction: column; gap: 4px;
+}
+.match-bar {
+  height: 3px; background: var(--border2); border-radius: 99px; overflow: hidden;
+}
+.match-fill {
+  height: 100%; border-radius: 99px;
+  transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+}
+.match-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
+}
+.skill-chip {
+  color: var(--accent) !important;
+  border-color: var(--accent-bdr) !important;
+  background: var(--accent-bg) !important;
+}
+
+/* ════════════════════════════════════════
+   MATCH INFO BAR
+   ════════════════════════════════════════ */
+.match-info-bar {
+  font-size: 12px; color: var(--text-muted);
+  margin-bottom: 12px; padding: 8px 12px;
+  background: var(--accent-bg); border: 1px solid var(--accent-bdr);
+  border-radius: 8px;
+}
+.match-info-bar strong { color: var(--accent); }
+.filtered-count { color: var(--text-faint); }

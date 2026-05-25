@@ -4,26 +4,17 @@ import { ResumeUpload } from './ResumeUpload.jsx';
 import { CompanyChips } from './CompanyChips.jsx';
 import { scrubInput } from '../utils/helpers.js';
 
-const EXPERIENCE_OPTIONS = [
-  { value: 'any',     label: 'Any experience' },
-  { value: 'fresher', label: 'Fresher (0–1 yr)' },
-  { value: '1-3',     label: '1–3 years' },
-  { value: '3-5',     label: '3–5 years' },
-  { value: '5-8',     label: '5–8 years' },
-  { value: '8+',      label: '8+ years' },
-];
-
 export function SearchPanel({ onSearch, loading, onResumeExtracted }) {
-  const [role, setRole]         = useState('');
-  const [city, setCity]         = useState('');
-  const [experience, setExperience] = useState('any');
+  const [role, setRole]           = useState('');
+  const [city, setCity]           = useState('');
+  const [experience, setExperience] = useState('');   // free number, empty = any
   const [companies, setCompanies]   = useState([]);
   const [errors, setErrors]         = useState({});
 
   function handleResumeExtracted(data) {
-    if (data.role)               setRole(data.role);
-    if (data.city)               setCity(data.city);
-    if (data.suggestedExperience) setExperience(data.suggestedExperience);
+    if (data.role) setRole(data.role);
+    if (data.city) setCity(data.city);
+    if (data.experienceYears) setExperience(String(data.experienceYears));
     onResumeExtracted?.(data);
   }
 
@@ -37,7 +28,14 @@ export function SearchPanel({ onSearch, loading, onResumeExtracted }) {
 
   function handleSearch() {
     if (!validate()) return;
-    onSearch({ role: role.trim(), city: city.trim(), experience, priorityCompanies: companies });
+    const expNum = parseInt(experience);
+    onSearch({
+      role:             role.trim(),
+      city:             city.trim(),
+      experience:       experienceToRange(expNum),
+      experienceYears:  isNaN(expNum) ? null : expNum,
+      priorityCompanies: companies,
+    });
   }
 
   return (
@@ -72,16 +70,32 @@ export function SearchPanel({ onSearch, loading, onResumeExtracted }) {
         </div>
 
         <div className="input-group">
-          <label className="field-label">Experience</label>
-          <select
-            className="text-input select-input"
-            value={experience}
-            onChange={e => setExperience(e.target.value)}
-          >
-            {EXPERIENCE_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          <label className="field-label">
+            Years of Experience
+            <span className="field-hint"> (optional)</span>
+          </label>
+          <div className="exp-input-wrap">
+            <input
+              type="number"
+              className="text-input exp-input"
+              value={experience}
+              min="0" max="50"
+              onChange={e => {
+                const v = e.target.value;
+                if (v === '' || (parseInt(v) >= 0 && parseInt(v) <= 50)) {
+                  setExperience(v);
+                }
+              }}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="e.g. 5"
+            />
+            <span className="exp-unit">yrs</span>
+          </div>
+          {experience !== '' && (
+            <span className="exp-hint">
+              Searching for {experienceToLabel(parseInt(experience))} roles
+            </span>
+          )}
         </div>
       </div>
 
@@ -112,4 +126,24 @@ export function SearchPanel({ onSearch, loading, onResumeExtracted }) {
       </div>
     </div>
   );
+}
+
+// Map a raw year number to the backend EXP_MAP key
+function experienceToRange(yrs) {
+  if (isNaN(yrs) || yrs === null) return 'any';
+  if (yrs <= 1)  return 'fresher';
+  if (yrs <= 3)  return '1-3';
+  if (yrs <= 5)  return '3-5';
+  if (yrs <= 8)  return '5-8';
+  return '8+';
+}
+
+function experienceToLabel(yrs) {
+  if (isNaN(yrs)) return 'any experience';
+  if (yrs === 0)  return 'fresher / entry-level';
+  if (yrs === 1)  return '0–1 year';
+  if (yrs <= 3)   return '1–3 year';
+  if (yrs <= 5)   return '3–5 year';
+  if (yrs <= 8)   return '5–8 year';
+  return `${yrs}+ year`;
 }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,9 +7,72 @@
     <meta name="description" content="Real-time job discovery across LinkedIn, Indeed & Naukri. No ads, no guesswork." />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+    <style>
+      /* ── Instant loading screen — visible before React hydrates ── */
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { background: #0a0b0f; }
+      [data-theme="light"] body { background: #f4f5f7; }
+
+      #splash {
+        position: fixed; inset: 0;
+        background: #0a0b0f;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 20px; z-index: 9999;
+        transition: opacity 0.35s ease;
+      }
+      #splash.hidden { opacity: 0; pointer-events: none; }
+
+      .splash-logo {
+        font-family: 'Syne', sans-serif;
+        font-size: 1.5rem; font-weight: 800;
+        letter-spacing: -0.03em; color: #f0f2f8;
+      }
+      .splash-logo em { color: #4fffb0; font-style: normal; }
+
+      .splash-bar {
+        width: 160px; height: 3px;
+        background: rgba(255,255,255,0.08);
+        border-radius: 99px; overflow: hidden;
+      }
+      .splash-bar-fill {
+        height: 100%; width: 0%;
+        background: #4fffb0; border-radius: 99px;
+        animation: load 1.2s cubic-bezier(0.4,0,0.2,1) forwards;
+      }
+      @keyframes load {
+        0%   { width: 0%; }
+        60%  { width: 75%; }
+        100% { width: 100%; }
+      }
+      .splash-sub {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 12px; color: #4a5060;
+        letter-spacing: 0.06em; text-transform: uppercase;
+      }
+      #root { min-height: 100vh; }
+    </style>
   </head>
   <body>
+    <!-- Instant splash — shown while JS loads, hidden once React mounts -->
+    <div id="splash">
+      <div class="splash-logo">Job<em>Scout</em> AI</div>
+      <div class="splash-bar"><div class="splash-bar-fill"></div></div>
+      <div class="splash-sub">Warming up the market scanner…</div>
+    </div>
+
     <div id="root"></div>
+
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Hide splash once React has painted the first frame
+      window.__hideSplash = function() {
+        const s = document.getElementById('splash');
+        if (s) {
+          s.classList.add('hidden');
+          setTimeout(() => s.remove(), 400);
+        }
+      };
+    </script>
   </body>
 </html>

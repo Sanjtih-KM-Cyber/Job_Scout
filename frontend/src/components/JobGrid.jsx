@@ -1,5 +1,6 @@
 // frontend/src/components/JobGrid.jsx
 import { JobCard } from './JobCard.jsx';
+import { filterByQualification } from '../utils/matchScore.js';
 
 function SkeletonCard() {
   return (
@@ -19,7 +20,7 @@ function SkeletonCard() {
   );
 }
 
-export function JobGrid({ jobs, status, filter, onDraftOutreach }) {
+export function JobGrid({ jobs, status, filter, resume, onDraftOutreach }) {
   if (status === 'loading') {
     return (
       <div className="job-grid">
@@ -33,12 +34,14 @@ export function JobGrid({ jobs, status, filter, onDraftOutreach }) {
       <div className="empty-state">
         <div className="empty-icon">⚠️</div>
         <h3>Scrapers hit a wall</h3>
-        <p>Job portals may be rate-limiting us. Try again in a minute.</p>
+        <p>Job portals may be rate-limiting. Try again in a minute.</p>
       </div>
     );
   }
 
-  const filtered = applyFilter(jobs, filter);
+  // Sort by qualification score if resume uploaded — never hide anything
+  const scored  = filterByQualification(jobs, resume);
+  const filtered = applyFilter(scored, filter);
 
   if (status === 'success' && filtered.length === 0) {
     return (
@@ -50,30 +53,39 @@ export function JobGrid({ jobs, status, filter, onDraftOutreach }) {
     );
   }
 
+  // Count how many are strong/good matches for the info bar
+  const goodMatches = resume
+    ? scored.filter(j => j.matchResult && j.matchResult.score >= 50).length
+    : 0;
+
   return (
-    <div className="job-grid">
-      {filtered.map((job, i) => (
-        <JobCard
-          key={`${job.company}-${job.title}-${i}`}
-          job={job}
-          onDraftOutreach={onDraftOutreach}
-        />
-      ))}
-    </div>
+    <>
+      {resume && scored.length > 0 && (
+        <div className="match-info-bar">
+          🎯 <strong>{goodMatches}</strong> strong matches for your profile
+          · all <strong>{scored.length}</strong> jobs shown, sorted by relevance
+        </div>
+      )}
+      <div className="job-grid">
+        {filtered.map((job, i) => (
+          <JobCard
+            key={`${job.company}-${job.title}-${i}`}
+            job={job}
+            onDraftOutreach={onDraftOutreach}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 
 function applyFilter(jobs, filter) {
   switch (filter) {
-    case 'priority':
-      return [...jobs].sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
-    case 'salary':
-      return jobs.filter(j => j.salary);
+    case 'priority': return [...jobs].sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
+    case 'salary':   return jobs.filter(j => j.salary);
     case 'linkedin':
     case 'indeed':
-    case 'naukri':
-      return jobs.filter(j => j.portal === filter);
-    default:
-      return jobs;
+    case 'naukri':   return jobs.filter(j => j.portal === filter);
+    default:         return jobs;
   }
 }
