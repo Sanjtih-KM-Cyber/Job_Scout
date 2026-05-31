@@ -3,7 +3,7 @@ import corsLib from 'cors';
 
 const allowedOrigins = [
   process.env.CORS_ORIGIN || 'http://localhost:5173',
-  'https://jobscout-ai.vercel.app',   // ← replace with your prod domain
+  'https://job-scout-seven.vercel.app',   // ← replace with your prod domain
 ];
 
 export default corsLib({
