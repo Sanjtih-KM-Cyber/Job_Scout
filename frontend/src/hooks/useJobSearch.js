@@ -10,22 +10,32 @@ export function useJobSearch() {
   const [error, setError]   = useState(null);
 
   const seenCompaniesRef = useRef(new Set());
-  const refreshPageRef   = useRef(1); // increments on each refresh → new Adzuna page
+  const refreshPageRef   = useRef(1);
+  const lastRoleRef      = useRef('');  // track last searched role
+  const lastCityRef      = useRef('');  // track last searched city
 
   const search = useCallback(async ({ role, city, experience, priorityCompanies, isRefresh = false }) => {
     setStatus('loading');
     setError(null);
 
-    // On fresh search: reset everything
-    if (!isRefresh) {
+    // ── Detect if the user changed their search ───────────────────────
+    // If role or city changed, this is a brand new search — wipe everything
+    const roleChanged = role?.toLowerCase().trim() !== lastRoleRef.current;
+    const cityChanged = city?.toLowerCase().trim() !== lastCityRef.current;
+    const isNewSearch = !isRefresh || roleChanged || cityChanged;
+
+    if (isNewSearch) {
+      // Full reset — new search must NEVER show old results
       seenCompaniesRef.current = new Set();
       refreshPageRef.current   = 1;
+      lastRoleRef.current      = role?.toLowerCase().trim() || '';
+      lastCityRef.current      = city?.toLowerCase().trim() || '';
     } else {
-      // On refresh: advance Adzuna page so backend fetches a different batch
+      // Genuine refresh of same search — advance page for fresh batch
       refreshPageRef.current += 2;
     }
 
-    const excludeCompanies = isRefresh
+    const excludeCompanies = isRefresh && !isNewSearch
       ? Array.from(seenCompaniesRef.current)
       : [];
 
@@ -51,7 +61,7 @@ export function useJobSearch() {
       const data = await res.json();
       const newJobs = data.jobs || [];
 
-      // Register all returned companies into seen registry
+      // Register returned companies into seen registry
       newJobs.forEach(j => { if (j.company) seenCompaniesRef.current.add(j.company); });
 
       setJobs(newJobs);
@@ -66,12 +76,12 @@ export function useJobSearch() {
   }, []);
 
   const reset = useCallback(() => {
-    setJobs([]);
-    setMeta(null);
-    setStatus('idle');
-    setError(null);
+    setJobs([]); setMeta(null);
+    setStatus('idle'); setError(null);
     seenCompaniesRef.current = new Set();
     refreshPageRef.current   = 1;
+    lastRoleRef.current      = '';
+    lastCityRef.current      = '';
   }, []);
 
   return { jobs, meta, status, error, search, reset };

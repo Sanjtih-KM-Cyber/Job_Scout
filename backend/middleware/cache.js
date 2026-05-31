@@ -1,4 +1,10 @@
 // backend/middleware/cache.js
+// Cache rules:
+//   - Initial search (page 1): cache for 5 min — same query in same session is fast
+//   - Refresh (page > 1): ALWAYS skip cache, always hit live scrapers
+//   - Every unique role+city+experience combo is a completely separate cache entry
+//     so switching from Finance to SDE never returns Finance results
+
 const memCache = new Map();
 const TTL_MS   = 5 * 60 * 1000; // 5 minutes
 
@@ -21,26 +27,38 @@ if (process.env.REDIS_URL) {
 
 export function buildCacheKey({ role, city, experience, priorityCompanies = [], refreshPage = 1 }) {
   const cos = [...priorityCompanies].sort().join(',');
-  // Include refreshPage in key — each refresh page is a distinct query
-  return `js:${role.toLowerCase().trim()}:${city.toLowerCase().trim()}:${experience || 'any'}:${cos}:p${refreshPage}`;
+  // Each refreshPage is its own key — page 2, 3 etc are never served from page 1's cache
+  // Role + city are always part of the key so Finance never bleeds into SDE results
+  return [
+    'js',
+    (role  || '').toLowerCase().trim(),
+    (city  || '').toLowerCase().trim(),
+    (experience || 'any'),
+    cos,
+    `p${refreshPage}`,
+  ].join(':');
 }
 
 export async function cacheMiddleware(req, res, next) {
   const { refreshPage = 1 } = req.body;
+
+  // ── Refresh = always live, never cached ──────────────────────────────
+  if (refreshPage > 1) {
+    res.locals.cacheKey = buildCacheKey(req.body);
+    return next(); // skip cache read entirely
+  }
+
+  // ── Initial search — check cache ─────────────────────────────────────
   const key = buildCacheKey(req.body);
   res.locals.cacheKey = key;
 
-  // Never serve cache on a refresh — always fetch fresh jobs
-  if (refreshPage > 1) {
-    return next();
-  }
-
-  // Check in-memory cache for page 1 (initial search only)
+  // Memory cache
   const mem = memCache.get(key);
   if (mem && mem.expiresAt > Date.now()) {
     return res.json({ ...mem.data, cached: true });
   }
 
+  // Redis cache (optional)
   if (redis && redisOk) {
     try {
       const raw = await redis.get(key);
@@ -56,14 +74,18 @@ export async function cacheMiddleware(req, res, next) {
 }
 
 export async function writeCache(key, data) {
-  memCache.set(key, { data, expiresAt: Date.now() + TTL_MS });
-  if (redis && redisOk) {
-    try {
-      await redis.setex(key, 300, JSON.stringify(data));
-    } catch { /* skip */ }
+  // Only cache page-1 results (initial searches)
+  // Refresh pages are never cached — they should always be live
+  if (key.endsWith(':p1') || key.includes(':p1:')) {
+    memCache.set(key, { data, expiresAt: Date.now() + TTL_MS });
+    if (redis && redisOk) {
+      try { await redis.setex(key, 300, JSON.stringify(data)); } catch { /* skip */ }
+    }
   }
+  // p2, p3, p4 etc — never written to cache, always fetched live
 }
 
+// Prune expired memory entries every 10 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of memCache.entries()) {

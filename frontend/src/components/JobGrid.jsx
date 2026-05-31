@@ -20,7 +20,7 @@ function SkeletonCard() {
   );
 }
 
-export function JobGrid({ jobs, status, filter, resume, onDraftOutreach }) {
+export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnalyze }) {
   if (status === 'loading') {
     return (
       <div className="job-grid">
@@ -28,7 +28,6 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach }) {
       </div>
     );
   }
-
   if (status === 'error') {
     return (
       <div className="empty-state">
@@ -39,8 +38,7 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach }) {
     );
   }
 
-  // Sort by qualification score if resume uploaded — never hide anything
-  const scored  = filterByQualification(jobs, resume);
+  const scored   = filterByQualification(jobs, resume);
   const filtered = applyFilter(scored, filter);
 
   if (status === 'success' && filtered.length === 0) {
@@ -53,7 +51,6 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach }) {
     );
   }
 
-  // Count how many are strong/good matches for the info bar
   const goodMatches = resume
     ? scored.filter(j => j.matchResult && j.matchResult.score >= 50).length
     : 0;
@@ -62,8 +59,7 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach }) {
     <>
       {resume && scored.length > 0 && (
         <div className="match-info-bar">
-          🎯 <strong>{goodMatches}</strong> strong matches for your profile
-          · all <strong>{scored.length}</strong> jobs shown, sorted by relevance
+          🎯 <strong>{goodMatches}</strong> strong matches · all <strong>{scored.length}</strong> jobs shown, sorted by relevance
         </div>
       )}
       <div className="job-grid">
@@ -72,6 +68,7 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach }) {
             key={`${job.company}-${job.title}-${i}`}
             job={job}
             onDraftOutreach={onDraftOutreach}
+            onAnalyze={onAnalyze}
           />
         ))}
       </div>
