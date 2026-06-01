@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { cacheMiddleware, writeCache } from '../middleware/cache.js';
 import { scrapeLinkedIn } from '../scrapers/linkedin.js';
 import { scrapeAdzuna }   from '../scrapers/adzuna.js';
+import { scrapeRemotive } from '../scrapers/remotive.js';
 import pLimit from 'p-limit';
 
 const router = Router();
@@ -14,6 +15,8 @@ const EXP_MAP = {
   '5-8':   { min: 5, max: 8 },
   '8+':    { min: 8, max: 30 },
 };
+
+const delay = ms => new Promise(r => setTimeout(r, ms));
 
 router.post('/', cacheMiddleware, async (req, res, next) => {
   try {
@@ -33,27 +36,28 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
     const expRange = EXP_MAP[experience] || null;
     const params   = { role: role.trim(), city: city.trim(), expRange, experience };
 
-    // Fan-out: LinkedIn + Adzuna page A + Adzuna page B
-    const limit = pLimit(3);
-    const [linkedInResult, adzunaResult1, adzunaResult2] = await Promise.allSettled([
-      limit(() => scrapeLinkedIn(params)),
+    // Stagger requests slightly to avoid simultaneous rate limit hits
+    const limit = pLimit(2); // max 2 concurrent instead of 3
+
+    const [adzunaResult, remotiveResult, linkedInResult] = await Promise.allSettled([
       limit(() => scrapeAdzuna(params, 'indeed', refreshPage)),
-      limit(() => scrapeAdzuna(params, 'naukri', refreshPage + 1)),
+      limit(async () => { await delay(300); return scrapeRemotive(params); }),
+      limit(async () => { await delay(600); return scrapeLinkedIn(params); }),
     ]);
 
     let jobs = [];
-    for (const result of [linkedInResult, adzunaResult1, adzunaResult2]) {
+    for (const result of [adzunaResult, remotiveResult, linkedInResult]) {
       if (result.status === 'fulfilled') jobs.push(...result.value);
       else console.warn('[Search] Source failed:', result.reason?.message);
     }
 
-    // Salary Honesty — strip anything not a real number
+    // Salary Honesty
     jobs = jobs.map(job => ({
       ...job,
       salary: isRealSalary(job.salary) ? job.salary : null,
     }));
 
-    // Deduplication by title+company
+    // Deduplication
     const seenKeys = new Set();
     jobs = jobs.filter(job => {
       const key = `${job.title?.toLowerCase()}:${job.company?.toLowerCase()}`;
@@ -62,29 +66,19 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
       return true;
     });
 
-    // Refresh Pipeline Flush — only apply if enough fresh results remain
+    // Refresh Pipeline Flush
     if (excludeCompanies.length > 0) {
       const lowerExclude = excludeCompanies.map(c => c.toLowerCase());
       const fresh = jobs.filter(j => !lowerExclude.includes(j.company?.toLowerCase()));
       if (fresh.length >= 4) jobs = fresh;
     }
 
-    // ── Priority Bias ──────────────────────────────────────────────────────
-    // RULE: Priority companies are a HINT, not a filter.
-    // - If a priority company appears in real results → pin it to the top
-    // - If it does NOT appear → do NOT invent a card. Just leave it out.
-    // - All other companies always show below the pinned ones.
+    // Priority Bias
     if (priorityCompanies.length > 0) {
       const lowerPriority = priorityCompanies.map(c => c.toLowerCase());
-
-      const pinned = jobs
-        .filter(j => lowerPriority.includes(j.company?.toLowerCase()))
-        .map(j => ({ ...j, priority: true }));
-
-      const rest = jobs
-        .filter(j => !lowerPriority.includes(j.company?.toLowerCase()));
-
-      // Pinned first, then all other real results — no fabrications
+      const pinned = jobs.filter(j => lowerPriority.includes(j.company?.toLowerCase()))
+                        .map(j => ({ ...j, priority: true }));
+      const rest   = jobs.filter(j => !lowerPriority.includes(j.company?.toLowerCase()));
       jobs = [...pinned, ...rest];
     }
 
@@ -93,11 +87,8 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
     const payload = {
       jobs,
       meta: {
-        role: role.trim(),
-        city: city.trim(),
-        experience,
-        priorityCompanies,
-        total: jobs.length,
+        role: role.trim(), city: city.trim(), experience,
+        priorityCompanies, total: jobs.length,
         timestamp: new Date().toISOString(),
         portals: ['linkedin', 'indeed', 'naukri'],
       },
@@ -114,7 +105,7 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
 function isRealSalary(salary) {
   if (!salary || typeof salary !== 'string') return false;
   const lower = salary.toLowerCase();
-  if (lower.includes('not disclosed') || lower.includes('na') || lower === '') return false;
+  if (lower.includes('not disclosed') || lower.includes('na')) return false;
   return /[\d,]+/.test(salary);
 }
 
