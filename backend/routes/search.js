@@ -1,9 +1,9 @@
 // backend/routes/search.js
 import { Router } from 'express';
 import { cacheMiddleware, writeCache } from '../middleware/cache.js';
-import { scrapeLinkedIn } from '../scrapers/linkedin.js';
-import { scrapeAdzuna }   from '../scrapers/adzuna.js';
-import { scrapeRemotive } from '../scrapers/remotive.js';
+import { scrapeLinkedIn }  from '../scrapers/linkedin.js';
+import { scrapeAdzuna }    from '../scrapers/adzuna.js';
+import { scrapeArbeitnow } from '../scrapers/arbeitnow.js';
 import pLimit from 'p-limit';
 
 const router = Router();
@@ -23,7 +23,7 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
     const {
       role,
       city,
-      experience      = 'any',
+      experience        = 'any',
       priorityCompanies = [],
       excludeCompanies  = [],
       refreshPage       = 1,
@@ -36,17 +36,17 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
     const expRange = EXP_MAP[experience] || null;
     const params   = { role: role.trim(), city: city.trim(), expRange, experience };
 
-    // Stagger requests slightly to avoid simultaneous rate limit hits
-    const limit = pLimit(2); // max 2 concurrent instead of 3
+    // Stagger requests to avoid simultaneous rate limit hits
+    const limit = pLimit(2);
 
-    const [adzunaResult, remotiveResult, linkedInResult] = await Promise.allSettled([
+    const [adzunaResult, arbeitnowResult, linkedInResult] = await Promise.allSettled([
       limit(() => scrapeAdzuna(params, 'indeed', refreshPage)),
-      limit(async () => { await delay(300); return scrapeRemotive(params); }),
+      limit(async () => { await delay(300); return scrapeArbeitnow(params); }),
       limit(async () => { await delay(600); return scrapeLinkedIn(params); }),
     ]);
 
     let jobs = [];
-    for (const result of [adzunaResult, remotiveResult, linkedInResult]) {
+    for (const result of [adzunaResult, arbeitnowResult, linkedInResult]) {
       if (result.status === 'fulfilled') jobs.push(...result.value);
       else console.warn('[Search] Source failed:', result.reason?.message);
     }
