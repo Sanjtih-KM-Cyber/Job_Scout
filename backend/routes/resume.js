@@ -1,12 +1,10 @@
 // backend/routes/resume.js
-// AI provider: Groq (llama-3.3-70b-versatile)
-// Free tier: 14,400 requests/day — vs Gemini's 20/day.
-// Extracts structured job-search data from a candidate's uploaded PDF resume.
-
 import { Router } from 'express';
 import multer from 'multer';
-import pdfParse from 'pdf-parse';
 import Groq from 'groq-sdk';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 const router = Router();
 
@@ -21,21 +19,26 @@ const upload = multer({
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-/**
- * POST /api/resume/parse
- * Multipart: file (PDF)
- * Returns: { role, city, skills, experienceYears, suggestedExperience }
- */
 router.post('/parse', upload.single('resume'), async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No PDF file uploaded' });
     }
 
-    const pdfData = await pdfParse(req.file.buffer);
-    const rawText = pdfData.text?.slice(0, 6000);
+    // Use createRequire to avoid pdf-parse's broken ESM test file loading on Linux
+    let rawText = '';
+    try {
+      const pdfParse = require('pdf-parse');
+      const pdfData  = await pdfParse(req.file.buffer);
+      rawText = pdfData.text?.slice(0, 6000) || '';
+    } catch (pdfErr) {
+      console.error('[PDF Parse]', pdfErr.message);
+      return res.status(422).json({
+        error: 'Could not read this PDF. Make sure it is not a scanned image.',
+      });
+    }
 
-    if (!rawText?.trim()) {
+    if (!rawText.trim()) {
       return res.status(422).json({
         error: 'Could not extract text from this PDF. Is it a scanned image?',
       });
@@ -71,8 +74,8 @@ For suggestedExperience choose exactly one of: "fresher", "1-3", "3-5", "5-8", "
       ],
     });
 
-    const text  = completion.choices[0]?.message?.content || '';
-    const clean = text.replace(/```json|```/g, '').trim();
+    const text   = completion.choices[0]?.message?.content || '';
+    const clean  = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
     res.json({
@@ -83,6 +86,7 @@ For suggestedExperience choose exactly one of: "fresher", "1-3", "3-5", "5-8", "
       suggestedExperience: parsed.suggestedExperience || 'any',
     });
   } catch (err) {
+    console.error('[Resume Parse Error]', err.message);
     if (err instanceof SyntaxError) {
       return res.status(422).json({ error: 'Could not parse AI response. Try again.' });
     }
