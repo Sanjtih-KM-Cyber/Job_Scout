@@ -12,6 +12,10 @@ import healthRouter   from './routes/health.js';
 const app  = express();
 const PORT = process.env.PORT || 4000;
 
+// Required for Render/Railway/Heroku — trusts the X-Forwarded-For header
+// so express-rate-limit can identify real client IPs correctly
+app.set('trust proxy', 1);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(cors);
 app.use(rateLimiter);

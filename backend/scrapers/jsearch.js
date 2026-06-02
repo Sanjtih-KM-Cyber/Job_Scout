@@ -1,8 +1,6 @@
 // backend/scrapers/jsearch.js
-// JSearch API via RapidAPI — https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
-// Pulls real-time jobs from LinkedIn, Indeed, Glassdoor, ZipRecruiter.
-// Free tier: 500 requests/month.
-// Proper location filtering, fresh jobs only, full JD text available.
+// JSearch API via RapidAPI — real-time jobs from LinkedIn, Indeed, Glassdoor
+// Free tier: 500 requests/month — rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
 
 import axios from 'axios';
 
@@ -22,79 +20,76 @@ function tokenize(str) {
     .filter(w => w.length > 2 && !STOP.has(w));
 }
 
-/**
- * Score how well a job matches the role based on title + description.
- * Returns 0-100. Jobs under 20 are filtered out.
- */
 function relevanceScore(job, role) {
-  const roleWords   = tokenize(role);
-  const titleWords  = tokenize(job.job_title || '');
-  const descWords   = tokenize((job.job_description || '').slice(0, 1000));
+  const roleWords  = tokenize(role);
+  const titleWords = tokenize(job.job_title || '');
+  const descWords  = tokenize((job.job_description || '').slice(0, 1500));
 
   let score = 0;
-
-  // Title match — strongest signal (up to 60 pts)
   const titleMatches = roleWords.filter(w => titleWords.includes(w));
-  score += titleMatches.length * 20;
-
-  // Description match — secondary signal (up to 40 pts)
+  score += titleMatches.length * 25;
   const descMatches = roleWords.filter(w => descWords.includes(w));
-  score += Math.min(40, descMatches.length * 10);
-
+  score += Math.min(40, descMatches.length * 8);
   return Math.min(100, score);
 }
 
 export async function scrapeJSearch({ role, city, expRange }, page = 1) {
   if (!RAPIDAPI_KEY) {
-    console.warn('[JSearch] No RAPIDAPI_KEY set — get free key at rapidapi.com/jsearch');
+    console.warn('[JSearch] No RAPIDAPI_KEY — get free key at rapidapi.com/jsearch');
     return [];
   }
 
   try {
-    const query = `${role} in ${city} India`;
+    // Try India-specific query first, then broader if no results
+    const queries = [
+      `${role} ${city} India`,   // most specific
+      `${role} India`,            // broader fallback
+    ];
 
-    const { data } = await axios.get('https://jsearch.p.rapidapi.com/search', {
-      timeout: 12000,
-      headers: {
-        'X-RapidAPI-Key':  RAPIDAPI_KEY,
-        'X-RapidAPI-Host': 'jsearch.p.rapidapi.com',
-      },
-      params: {
-        query,
-        page,
-        num_pages:          1,
-        date_posted:        'month',   // only last 30 days — no stale jobs
-        employment_types:   'FULLTIME,CONTRACTOR',
-        job_requirements:   expRange
-          ? expRange.min <= 1  ? 'NO_EXPERIENCE'
-          : expRange.min <= 3  ? 'UNDER_3_YEARS_EXPERIENCE'
-          : 'MORE_THAN_3_YEARS_EXPERIENCE'
-          : undefined,
-      },
-    });
+    for (const query of queries) {
+      const { data } = await axios.get('https://jsearch.p.rapidapi.com/search', {
+        timeout: 12000,
+        headers: {
+          'X-RapidAPI-Key':  RAPIDAPI_KEY,
+          'X-RapidAPI-Host': 'jsearch.p.rapidapi.com',
+        },
+        params: {
+          query,
+          page,
+          num_pages:    1,
+          date_posted:  'month',  // last 30 days only — no stale jobs
+          country:      'in',     // India specifically
+        },
+      });
 
-    const allJobs = data?.data || [];
+      const allJobs = data?.data || [];
+      if (allJobs.length === 0) continue;
 
-    // Filter by relevance — title AND description must match the role
-    const relevant = allJobs
-      .map(job => ({ job, score: relevanceScore(job, role) }))
-      .filter(({ score }) => score >= 20)
-      .sort((a, b) => b.score - a.score)
-      .map(({ job }) => job);
+      // Score by title + JD relevance
+      const scored = allJobs
+        .map(job => ({ job, score: relevanceScore(job, role) }))
+        .filter(({ score }) => score >= 20)
+        .sort((a, b) => b.score - a.score);
 
-    console.log(`[JSearch] ✅ ${relevant.length}/${allJobs.length} relevant jobs for "${role}" in ${city}`);
+      console.log(`[JSearch] ✅ ${scored.length}/${allJobs.length} relevant for "${role}" in ${city} (query: "${query}")`);
 
-    return relevant.slice(0, 12).map(job => ({
-      title:     job.job_title                  || role,
-      company:   job.employer_name              || 'Company',
-      city:      job.job_city || job.job_state  || city,
-      portal:    mapPortal(job.job_apply_link),
-      salary:    formatSalary(job),
-      experience: expRange ? `${expRange.min}–${expRange.max} yrs` : null,
-      posted:    humanizeDate(job.job_posted_at_timestamp),
-      sourceUrl: job.job_apply_link             || null,
-      priority:  false,
-    }));
+      if (scored.length > 0) {
+        return scored.slice(0, 12).map(({ job }) => ({
+          title:     job.job_title                             || role,
+          company:   job.employer_name                         || 'Company',
+          city:      job.job_city || job.job_state             || city,
+          portal:    mapPortal(job.job_apply_link),
+          salary:    formatSalary(job),
+          experience: expRange ? `${expRange.min}–${expRange.max} yrs` : null,
+          posted:    humanizeDate(job.job_posted_at_timestamp),
+          sourceUrl: job.job_apply_link                        || null,
+          priority:  false,
+        }));
+      }
+    }
+
+    console.log(`[JSearch] 0 relevant jobs for "${role}" in ${city}`);
+    return [];
   } catch (err) {
     const status = err.response?.status;
     console.error(`[JSearch] ${status || ''} ${err.message}`);
@@ -114,8 +109,6 @@ function formatSalary(job) {
   const max = job.job_max_salary;
   const per = job.job_salary_period;
   if (!min && !max) return null;
-
-  // Convert to LPA if yearly
   if (per === 'YEAR') {
     const fmt = n => `₹${Math.round(n / 100000)}L`;
     if (min && max) return `${fmt(min)} – ${fmt(max)} PA`;
