@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { cacheMiddleware, writeCache } from '../middleware/cache.js';
 import { scrapeLinkedIn } from '../scrapers/linkedin.js';
 import { scrapeAdzuna }   from '../scrapers/adzuna.js';
-import { scrapeJooble }   from '../scrapers/jooble.js';
+import { scrapeJSearch }  from '../scrapers/jsearch.js';
 import pLimit from 'p-limit';
 
 const router = Router();
@@ -38,14 +38,14 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
 
     const limit = pLimit(2);
 
-    const [adzunaResult, joobleResult, linkedInResult] = await Promise.allSettled([
-      limit(() => scrapeAdzuna(params, 'indeed', refreshPage)),
-      limit(async () => { await delay(300); return scrapeJooble(params); }),
+    const [jsearchResult, adzunaResult, linkedInResult] = await Promise.allSettled([
+      limit(() => scrapeJSearch(params, refreshPage)),
+      limit(async () => { await delay(300); return scrapeAdzuna(params, 'indeed', refreshPage); }),
       limit(async () => { await delay(600); return scrapeLinkedIn(params); }),
     ]);
 
     let jobs = [];
-    for (const result of [adzunaResult, joobleResult, linkedInResult]) {
+    for (const result of [jsearchResult, adzunaResult, linkedInResult]) {
       if (result.status === 'fulfilled') jobs.push(...result.value);
       else console.warn('[Search] Source failed:', result.reason?.message);
     }
