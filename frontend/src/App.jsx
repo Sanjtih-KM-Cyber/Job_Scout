@@ -8,6 +8,7 @@ import { JobGrid }          from './components/JobGrid.jsx';
 import { SavedSearches }    from './components/SavedSearches.jsx';
 import { OutreachModal }    from './components/OutreachModal.jsx';
 import { AnalyzeModal }     from './components/AnalyzeModal.jsx';
+import { WhatsAppShare }    from './components/WhatsAppShare.jsx';
 import { useTheme }         from './hooks/useTheme.js';
 import { useJobSearch }     from './hooks/useJobSearch.js';
 import { useCompanySearch } from './hooks/useCompanySearch.js';
@@ -21,11 +22,7 @@ export default function App() {
   const companySearch = useCompanySearch();
   const { saved, saveSearch, removeSearch, clearAll } = useSavedSearches();
   const { outreachJob, outreachDraft, outreachStatus, outreachError, openOutreach, closeOutreach } = useOutreach();
-  const {
-    analyzeJob, activeTab, setActiveTab,
-    scoreData, summaryData, scoreStatus, summaryStatus,
-    openAnalyze, closeAnalyze,
-  } = useAnalyze();
+  const { analyzeJob, activeTab, setActiveTab, scoreData, summaryData, scoreStatus, summaryStatus, openAnalyze, closeAnalyze } = useAnalyze();
 
   const [mode, setMode]             = useState('role');
   const [filter, setFilter]         = useState('all');
@@ -33,17 +30,15 @@ export default function App() {
   const [lastParams, setLastParams] = useState(null);
   const [justSaved, setJustSaved]   = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [whatsAppJob, setWhatsAppJob]   = useState(null);
   const resumeDataRef = useRef(null);
 
   const active = mode === 'role' ? roleSearch : companySearch;
   const { jobs, meta, status } = active;
 
   function handleModeChange(newMode) {
-    setMode(newMode);
-    setFilter('all');
-    setLastParams(null);
-    roleSearch.reset?.();
-    companySearch.reset?.();
+    setMode(newMode); setFilter('all'); setLastParams(null);
+    roleSearch.reset?.(); companySearch.reset?.();
   }
 
   async function handleRoleSearch(params, isRefresh = false) {
@@ -94,21 +89,12 @@ export default function App() {
     if (meta.mode === 'company') {
       return <><strong>{meta.company}</strong>{meta.sector && ` · ${meta.sector}`}{meta.city && ` in ${meta.city}`}</>;
     }
-    return (
-      <><strong>{meta.role}</strong> in {meta.city}
-        {meta.experience && meta.experience !== 'any' && <span className="results-exp"> · {meta.experience}</span>}
-      </>
-    );
+    return <><strong>{meta.role}</strong> in {meta.city}{meta.experience && meta.experience !== 'any' && <span className="results-exp"> · {meta.experience}</span>}</>;
   }
 
   return (
     <div className="app">
-      <Header
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        savedCount={saved.length}
-        onOpenSaved={() => setDrawerOpen(true)}
-      />
+      <Header theme={theme} onToggleTheme={toggleTheme} savedCount={saved.length} onOpenSaved={() => setDrawerOpen(true)} />
 
       <main className="main">
         <div className="hero">
@@ -119,16 +105,9 @@ export default function App() {
         <div className="search-wrap">
           <ModeToggle mode={mode} onChange={handleModeChange} />
           {mode === 'role' ? (
-            <SearchPanel
-              onSearch={handleRoleSearch}
-              loading={status === 'loading' && mode === 'role'}
-              onResumeExtracted={handleResumeExtracted}
-            />
+            <SearchPanel onSearch={handleRoleSearch} loading={status === 'loading' && mode === 'role'} onResumeExtracted={handleResumeExtracted} />
           ) : (
-            <CompanyPanel
-              onSearch={handleCompanySearch}
-              loading={status === 'loading' && mode === 'company'}
-            />
+            <CompanyPanel onSearch={handleCompanySearch} loading={status === 'loading' && mode === 'company'} />
           )}
         </div>
 
@@ -137,18 +116,11 @@ export default function App() {
             <div className="results-header">
               <div className="results-title">{resultsLabel()}</div>
               <div className="results-actions">
-                {status === 'success' && (
-                  <div className="integrity-badge">{jobs.length} real results</div>
-                )}
+                {status === 'success' && <div className="integrity-badge">{jobs.length} real results</div>}
                 {status === 'success' && lastParams && (
-                  <button
-                    className={`btn-refresh ${isRefreshing ? 'spinning' : ''}`}
-                    onClick={handleRefresh}
-                    disabled={isRefreshing || status === 'loading'}
-                  >
+                  <button className={`btn-refresh ${isRefreshing ? 'spinning' : ''}`} onClick={handleRefresh} disabled={isRefreshing || status === 'loading'}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <polyline points="23 4 23 10 17 10"/>
-                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                      <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                     </svg>
                     Refresh Listings
                   </button>
@@ -162,12 +134,11 @@ export default function App() {
             <FilterBar active={filter} onChange={setFilter} total={jobs.length} cached={meta?.cached} />
 
             <JobGrid
-              jobs={jobs}
-              status={status}
-              filter={filter}
+              jobs={jobs} status={status} filter={filter}
               resume={mode === 'role' ? resumeDataRef.current : null}
               onDraftOutreach={job => openOutreach(job, resumeDataRef.current)}
               onAnalyze={handleAnalyze}
+              onWhatsApp={job => setWhatsAppJob(job)}
             />
           </div>
         )}
@@ -176,41 +147,18 @@ export default function App() {
           <div className="empty-state">
             <div className="empty-icon">{mode === 'company' ? '🏢' : '🔭'}</div>
             <h3>{mode === 'company' ? 'Company Intelligence ready' : 'Ready to scan the market'}</h3>
-            <p>{mode === 'company'
-              ? 'Enter a company and sector to see all their open roles'
-              : 'Enter a role and city — or drop your resume for instant auto-fill'}</p>
+            <p>{mode === 'company' ? 'Enter a company and sector to see all their open roles' : 'Enter a role and city — or drop your resume for instant auto-fill'}</p>
           </div>
         )}
       </main>
 
-      {drawerOpen && (
-        <SavedSearches
-          saved={saved} onLoad={handleLoadSaved}
-          onRemove={removeSearch} onClearAll={clearAll}
-          onClose={() => setDrawerOpen(false)}
-        />
-      )}
+      {drawerOpen && <SavedSearches saved={saved} onLoad={handleLoadSaved} onRemove={removeSearch} onClearAll={clearAll} onClose={() => setDrawerOpen(false)} />}
 
-      {outreachJob && (
-        <OutreachModal
-          job={outreachJob} draft={outreachDraft}
-          status={outreachStatus} error={outreachError}
-          onClose={closeOutreach}
-        />
-      )}
+      {outreachJob && <OutreachModal job={outreachJob} draft={outreachDraft} status={outreachStatus} error={outreachError} onClose={closeOutreach} />}
 
-      {analyzeJob && (
-        <AnalyzeModal
-          job={analyzeJob}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          scoreData={scoreData}
-          summaryData={summaryData}
-          scoreStatus={scoreStatus}
-          summaryStatus={summaryStatus}
-          onClose={closeAnalyze}
-        />
-      )}
+      {analyzeJob && <AnalyzeModal job={analyzeJob} activeTab={activeTab} onTabChange={setActiveTab} scoreData={scoreData} summaryData={summaryData} scoreStatus={scoreStatus} summaryStatus={summaryStatus} onClose={closeAnalyze} />}
+
+      {whatsAppJob && <WhatsAppShare job={whatsAppJob} onClose={() => setWhatsAppJob(null)} />}
     </div>
   );
 }

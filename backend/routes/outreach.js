@@ -1,7 +1,6 @@
 // backend/routes/outreach.js
-// AI provider: Groq (llama-3.3-70b-versatile)
-// Context-Aware Recruiter Outreach Drafts
-// Combines resume profile + job card → LinkedIn note + cold email
+// Generates Cold DM (LinkedIn) + Cold Email using Groq
+// Better, more human-sounding copy
 
 import { Router } from 'express';
 import Groq from 'groq-sdk';
@@ -9,11 +8,6 @@ import Groq from 'groq-sdk';
 const router = Router();
 const groq   = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-/**
- * POST /api/outreach/draft
- * Body: { job, resume }
- * Returns: { linkedin, email: { subject, body } }
- */
 router.post('/draft', async (req, res, next) => {
   try {
     const { job, resume } = req.body;
@@ -22,44 +16,54 @@ router.post('/draft', async (req, res, next) => {
       return res.status(400).json({ error: 'job.title and job.company are required' });
     }
 
-    const candidateSummary = resume
+    const candidateSummary = resume?.role
       ? `Candidate:
-- Role: ${resume.role || 'Not specified'}
+- Role: ${resume.role}
 - Experience: ${resume.experienceYears || 'Not specified'} years
-- Skills: ${(resume.skills || []).join(', ') || 'Not specified'}
-- Location: ${resume.city || 'India'}`
-      : 'Candidate background not provided — write a strong generic template.';
+- Skills: ${(resume.skills || []).slice(0, 6).join(', ') || 'Not specified'}
+- Location: ${resume.city || 'India'}
+- Summary: ${resume.summary || 'Not provided'}`
+      : 'Candidate profile not provided — write a confident, compelling generic message.';
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      temperature: 0.7,
-      max_tokens: 700,
+      temperature: 0.75,
+      max_tokens: 800,
       messages: [
         {
           role: 'system',
-          content: 'You are a career coach writing outreach messages for Indian tech job seekers. Return ONLY valid JSON — no markdown, no preamble.',
+          content: `You write outreach messages for Indian job seekers. Your style is:
+- Warm and direct — like a smart friend reaching out, not a desperate applicant
+- Specific — always mention the exact role and a concrete skill match
+- Confident but not arrogant
+- No filler phrases like "I hope this finds you well", "I am writing to express my interest", "I would love to connect"
+- No emojis
+Return ONLY valid JSON.`,
         },
         {
           role: 'user',
-          content: `${candidateSummary}
+          content: `Write two outreach messages.
 
-Target job:
+${candidateSummary}
+
+Job:
 - Role: ${job.title}
 - Company: ${job.company}
 - Location: ${job.city || 'India'}
 - Platform: ${job.portal || 'LinkedIn'}
-${job.salary     ? `- Salary: ${job.salary}` : ''}
-${job.experience ? `- Experience required: ${job.experience}` : ''}
+${job.salary ? `- Salary: ${job.salary}` : ''}
+${job.experience ? `- Experience needed: ${job.experience}` : ''}
 
-Write two outreach messages. Be specific, confident, human — never generic or sycophantic.
-LinkedIn note MUST be under 300 characters. Email: 4-5 tight sentences.
+Guidelines:
+LinkedIn DM: Under 300 characters. Start with something specific about the role or company. End with a clear, easy ask (a quick call, a reply). Do NOT start with "Hi" or "Hello" alone.
+Cold Email: 3-4 sentences. First sentence = hook (specific insight about the company or role). Second = your most relevant credential. Third = specific ask. Sign off naturally.
 
-Return this exact JSON:
+Return this JSON:
 {
-  "linkedin": "LinkedIn connection note under 300 chars, direct and punchy, no emojis",
+  "linkedin": "LinkedIn DM under 300 chars",
   "email": {
-    "subject": "Specific email subject line",
-    "body": "4-5 sentence email body highlighting 2-3 specific skill matches with a clear ask at the end"
+    "subject": "Specific subject — not generic like 'Job Application'",
+    "body": "3-4 sentence email body"
   }
 }`,
         },
@@ -73,7 +77,7 @@ Return this exact JSON:
     res.json({
       linkedin: parsed.linkedin || '',
       email: {
-        subject: parsed.email?.subject || `Interest in ${job.title} at ${job.company}`,
+        subject: parsed.email?.subject || `Re: ${job.title} at ${job.company}`,
         body:    parsed.email?.body    || '',
       },
     });

@@ -1,77 +1,93 @@
 // frontend/src/utils/matchScore.js
-// Qualification match scoring — soft scoring only, NO hard filtering.
-// Jobs are sorted by score but ALL jobs are shown.
-// The score is purely informational — the user decides what's relevant.
+// Qualification match — only active when resume is uploaded.
+// Scores based on role alignment + skill keywords in job title/description.
+// Shows badge only when resume exists. No hard filtering — all jobs shown.
 
 const ROLE_GROUPS = [
-  ['software engineer','sde','software developer','backend','frontend','full stack','fullstack','developer','programmer'],
-  ['product manager','pm','product lead','product owner','program manager'],
-  ['data scientist','ml engineer','machine learning','ai engineer','data analyst','analytics'],
-  ['devops','sre','site reliability','platform engineer','cloud engineer','infrastructure'],
-  ['designer','ux','ui','product designer','interaction designer','visual designer'],
-  ['finance manager','finance lead','financial analyst','finance controller','cfo','finance operations','finance director','financial controller','vp finance'],
-  ['marketing manager','growth manager','marketing lead','brand manager','digital marketing','marketing director'],
-  ['hr manager','human resources','talent acquisition','recruiter','people ops','chro'],
-  ['sales manager','account manager','business development','bd manager','sales lead','sales director'],
-  ['project manager','delivery manager','scrum master','agile coach','pmo'],
-  ['qa engineer','test engineer','sdet','quality assurance','quality engineer'],
-  ['security engineer','cybersecurity','infosec','penetration tester','appsec'],
-  ['data engineer','etl','analytics engineer','bi developer','data infrastructure','data platform'],
-  ['mobile developer','android','ios developer','react native','flutter'],
-  ['operations manager','ops manager','operations lead','chief of staff','operations director'],
-  ['content writer','copywriter','content strategist','technical writer','editor'],
-  ['lawyer','legal counsel','legal manager','company secretary','compliance'],
-  ['doctor','physician','surgeon','medical officer','consultant physician'],
-  ['accountant','chartered accountant','ca','tax manager','audit manager'],
+  ['software engineer','sde','software developer','backend','frontend','full stack','fullstack','developer','programmer','coder'],
+  ['product manager','pm','product lead','product owner','program manager','product analyst'],
+  ['data scientist','ml engineer','machine learning','ai engineer','data analyst','analytics','data science'],
+  ['devops','sre','site reliability','platform engineer','cloud engineer','infrastructure','devsecops'],
+  ['designer','ux','ui','product designer','interaction designer','visual designer','graphic designer'],
+  ['finance manager','finance lead','financial analyst','finance controller','cfo','finance operations','finance director','financial controller','vp finance','treasury','fp&a'],
+  ['marketing manager','growth manager','marketing lead','brand manager','digital marketing','marketing director','performance marketing','seo','sem'],
+  ['hr manager','human resources','talent acquisition','recruiter','people ops','chro','hrbp','hr business partner'],
+  ['sales manager','account manager','business development','bd manager','sales lead','sales director','account executive','revenue'],
+  ['project manager','delivery manager','scrum master','agile coach','pmo','program manager'],
+  ['qa engineer','test engineer','sdet','quality assurance','quality engineer','automation engineer'],
+  ['security engineer','cybersecurity','infosec','penetration tester','appsec','soc analyst'],
+  ['data engineer','etl','analytics engineer','bi developer','data infrastructure','data platform','data architect'],
+  ['mobile developer','android','ios developer','react native','flutter','mobile engineer'],
+  ['operations manager','ops manager','operations lead','chief of staff','operations director','supply chain','logistics'],
+  ['content writer','copywriter','content strategist','technical writer','editor','content creator'],
+  ['lawyer','legal counsel','legal manager','company secretary','compliance','legal advisor'],
+  ['accountant','chartered accountant','ca','tax manager','audit manager','cpa','controller'],
+  ['consultant','strategy','management consultant','business analyst','advisory'],
+  ['customer success','customer support','csm','client success','account management'],
 ];
 
-/**
- * Score a job against resume. Returns 0–100 as soft signal only.
- * null = no resume uploaded (show all, no badge).
- */
 export function scoreJobMatch(job, resume) {
-  if (!resume) return null;
+  // Only score when resume has been uploaded and parsed
+  if (!resume || !resume.role) return null;
+
+  const resumeRoleLow = resume.role.toLowerCase();
+  const jobTitleLow   = (job.title || '').toLowerCase();
+  const jobText       = `${job.title} ${job.company}`.toLowerCase();
+  const skills        = resume.skills || [];
 
   let score = 0;
-  const matchedSkills = [];
 
-  const jobText       = `${job.title} ${job.company}`.toLowerCase();
-  const resumeRoleLow = (resume.role || '').toLowerCase();
-  const jobTitleLow   = (job.title  || '').toLowerCase();
-
-  // ── 1. Role alignment (up to 60 pts) ─────────────────────────────────
-  if (jobTitleLow.includes(resumeRoleLow) || resumeRoleLow.includes(jobTitleLow)) {
+  // ── 1. Role alignment (0–60 pts) ─────────────────────────────────────
+  if (jobTitleLow === resumeRoleLow) {
+    // Exact match
     score += 60;
+  } else if (jobTitleLow.includes(resumeRoleLow) || resumeRoleLow.includes(jobTitleLow)) {
+    // One contains the other
+    score += 50;
   } else {
-    // Check synonym group
+    // Check role synonym group
     const resumeGroup = ROLE_GROUPS.find(g => g.some(r => resumeRoleLow.includes(r)));
     const jobGroup    = ROLE_GROUPS.find(g => g.some(r => jobTitleLow.includes(r)));
 
-    if (resumeGroup && jobGroup && resumeGroup === jobGroup) {
-      score += 50;
+    if (resumeGroup && jobGroup) {
+      if (resumeGroup === jobGroup) {
+        score += 40; // Same domain group
+      } else {
+        score += 0;  // Different domain — penalise by adding nothing
+      }
     } else {
-      // Word overlap — any shared meaningful word is worth 15pts each
+      // Word overlap — each shared meaningful word = 12 pts
       const resumeWords = tokenize(resumeRoleLow);
       const jobWords    = tokenize(jobTitleLow);
       const overlap = resumeWords.filter(w => jobWords.includes(w) && w.length > 3);
-      score += Math.min(40, overlap.length * 15);
+      score += Math.min(35, overlap.length * 12);
     }
   }
 
-  // ── 2. Skills match (up to 40 pts) ───────────────────────────────────
-  const skills = resume.skills || [];
+  // ── 2. Skills match (0–40 pts) ────────────────────────────────────────
+  // Only count if we actually have skills extracted
+  const matchedSkills = [];
   if (skills.length > 0) {
-    const ptsEach = Math.floor(40 / skills.length);
-    for (const skill of skills) {
-      if (skill.length < 2) continue;
-      if (jobText.includes(skill.toLowerCase())) {
+    const ptsEach = Math.round(40 / Math.min(skills.length, 8));
+    for (const skill of skills.slice(0, 8)) {
+      const skillLow = (skill || '').toLowerCase().trim();
+      if (skillLow.length < 2) continue;
+      if (jobText.includes(skillLow)) {
         matchedSkills.push(skill);
         score += ptsEach;
       }
     }
   }
 
-  score = Math.min(100, score);
+  // ── 3. Domain mismatch penalty ────────────────────────────────────────
+  // If resume is finance and job is software (or vice versa), heavily penalise
+  const resumeGroup = ROLE_GROUPS.find(g => g.some(r => resumeRoleLow.includes(r)));
+  const jobGroup    = ROLE_GROUPS.find(g => g.some(r => jobTitleLow.includes(r)));
+  if (resumeGroup && jobGroup && resumeGroup !== jobGroup) {
+    score = Math.min(score, 25); // Cap at 25 for cross-domain jobs
+  }
+
+  score = Math.max(0, Math.min(100, score));
 
   return {
     score,
@@ -81,20 +97,15 @@ export function scoreJobMatch(job, resume) {
   };
 }
 
-/**
- * Sort jobs by match score (best first) but NEVER hide any job.
- * Priority-pinned jobs always stay at top regardless of score.
- */
 export function filterByQualification(jobs, resume) {
-  if (!resume) return jobs;
+  // No resume = no scoring, return as-is
+  if (!resume || !resume.role) return jobs;
 
   return jobs
     .map(job => ({ ...job, matchResult: scoreJobMatch(job, resume) }))
     .sort((a, b) => {
-      // Priority pins always first
       if (a.priority && !b.priority) return -1;
       if (!a.priority && b.priority) return 1;
-      // Then sort by score descending
       return (b.matchResult?.score || 0) - (a.matchResult?.score || 0);
     });
 }
@@ -120,8 +131,7 @@ const STOP = new Set([
 ]);
 
 function tokenize(str) {
-  return str
-    .toLowerCase()
+  return (str || '').toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter(w => w.length > 2 && !STOP.has(w));

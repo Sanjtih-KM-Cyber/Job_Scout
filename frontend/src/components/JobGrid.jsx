@@ -20,44 +20,27 @@ function SkeletonCard() {
   );
 }
 
-export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnalyze }) {
+export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnalyze, onWhatsApp }) {
   if (status === 'loading') {
-    return (
-      <div className="job-grid">
-        {Array.from({ length: 9 }).map((_, i) => <SkeletonCard key={i} />)}
-      </div>
-    );
+    return <div className="job-grid">{Array.from({ length: 9 }).map((_, i) => <SkeletonCard key={i} />)}</div>;
   }
   if (status === 'error') {
-    return (
-      <div className="empty-state">
-        <div className="empty-icon">⚠️</div>
-        <h3>Scrapers hit a wall</h3>
-        <p>Job portals may be rate-limiting. Try again in a minute.</p>
-      </div>
-    );
+    return <div className="empty-state"><div className="empty-icon">⚠️</div><h3>Scrapers hit a wall</h3><p>Try again in a minute.</p></div>;
   }
 
   const scored   = filterByQualification(jobs, resume);
   const filtered = applyFilter(scored, filter);
 
   if (status === 'success' && filtered.length === 0) {
-    return (
-      <div className="empty-state">
-        <div className="empty-icon">🔍</div>
-        <h3>No results for this filter</h3>
-        <p>Try "All" or a different portal tab.</p>
-      </div>
-    );
+    return <div className="empty-state"><div className="empty-icon">🔍</div><h3>No results for this filter</h3><p>Try "All" or a different portal tab.</p></div>;
   }
 
-  const goodMatches = resume
-    ? scored.filter(j => j.matchResult && j.matchResult.score >= 50).length
-    : 0;
+  const hasResume    = resume && resume.role;
+  const goodMatches  = hasResume ? scored.filter(j => j.matchResult && j.matchResult.score >= 50).length : 0;
 
   return (
     <>
-      {resume && scored.length > 0 && (
+      {hasResume && scored.length > 0 && (
         <div className="match-info-bar">
           🎯 <strong>{goodMatches}</strong> strong matches · all <strong>{scored.length}</strong> jobs shown, sorted by relevance
         </div>
@@ -69,6 +52,7 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnaly
             job={job}
             onDraftOutreach={onDraftOutreach}
             onAnalyze={onAnalyze}
+            onWhatsApp={onWhatsApp}
           />
         ))}
       </div>
