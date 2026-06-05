@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 
 const STORAGE_KEY = 'jobscout:whatsapp-numbers';
-const APP_URL     = 'https://jobscout-ai.vercel.app';
+const APP_URL     = 'https://job-scout-seven.vercel.app';
 
 // Single persistent reference to the WhatsApp Web tab
 let waTab = null;
