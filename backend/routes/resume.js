@@ -6,7 +6,6 @@ import Groq from 'groq-sdk';
 
 const router = Router();
 
-// Accept both PDF and DOCX
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -16,14 +15,18 @@ const upload = multer({
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/msword',
     ];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only PDF or Word documents accepted'));
+    const ext = file.originalname.toLowerCase();
+    if (allowed.includes(file.mimetype) || ext.endsWith('.pdf') || ext.endsWith('.docx') || ext.endsWith('.doc')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF or Word documents accepted'));
+    }
   },
 });
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// ── PDF text extraction (3 fallback methods) ─────────────────────────────────
+// ── PDF extraction ────────────────────────────────────────────────────────────
 async function extractPdfText(buffer) {
   try {
     const { default: pdfParse } = await import('pdf-parse/lib/pdf-parse.js');
@@ -39,6 +42,7 @@ async function extractPdfText(buffer) {
     if (data.text?.trim()) return data.text.slice(0, 6000);
   } catch (e) { console.error('[PDF M2]', e.message); }
 
+  // Raw ASCII fallback
   try {
     const text = buffer.toString('latin1');
     const chunks = [];
@@ -55,16 +59,57 @@ async function extractPdfText(buffer) {
   return null;
 }
 
-// ── DOCX text extraction ──────────────────────────────────────────────────────
+// ── DOCX extraction — mammoth is the gold standard for .docx ─────────────────
 async function extractDocxText(buffer) {
+  // Method 1: mammoth (best quality, preserves structure)
   try {
     const mammoth = await import('mammoth');
-    const result  = await mammoth.extractRawText({ buffer });
-    return result.value?.slice(0, 6000) || null;
-  } catch (e) {
-    console.error('[DOCX]', e.message);
-    return null;
-  }
+    const result  = await mammoth.default.extractRawText({ buffer });
+    const text    = result?.value?.trim();
+    if (text && text.length > 50) {
+      console.log('[DOCX] mammoth extracted', text.length, 'chars');
+      return text.slice(0, 6000);
+    }
+  } catch (e) { console.error('[DOCX M1 mammoth]', e.message); }
+
+  // Method 2: unzip and read word/document.xml directly
+  // .docx is a zip file containing XML
+  try {
+    const JSZip = (await import('jszip')).default;
+    const zip   = await JSZip.loadAsync(buffer);
+    const xmlFile = zip.file('word/document.xml');
+    if (xmlFile) {
+      const xml  = await xmlFile.async('string');
+      // Strip XML tags, decode entities
+      const text = xml
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text.length > 50) {
+        console.log('[DOCX] JSZip/XML extracted', text.length, 'chars');
+        return text.slice(0, 6000);
+      }
+    }
+  } catch (e) { console.error('[DOCX M2 jszip]', e.message); }
+
+  // Method 3: raw buffer scan (last resort)
+  try {
+    const text = buffer.toString('utf8');
+    const readable = text
+      .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (readable.length > 100) {
+      console.log('[DOCX] raw fallback extracted', readable.length, 'chars');
+      return readable.slice(0, 6000);
+    }
+  } catch (e) { console.error('[DOCX M3 raw]', e.message); }
+
+  return null;
 }
 
 router.post('/parse', upload.single('resume'), async (req, res, next) => {
@@ -73,16 +118,19 @@ router.post('/parse', upload.single('resume'), async (req, res, next) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    console.log('[Resume] Received:', req.file.originalname, req.file.mimetype, req.file.size, 'bytes');
+    const fname = req.file.originalname.toLowerCase();
+    const isDocx = fname.endsWith('.docx') || fname.endsWith('.doc')
+                || req.file.mimetype.includes('word');
 
-    const isDocx = req.file.mimetype.includes('word') || req.file.originalname.endsWith('.docx');
+    console.log('[Resume] Received:', req.file.originalname, isDocx ? 'DOCX' : 'PDF', req.file.size, 'bytes');
+
     const rawText = isDocx
       ? await extractDocxText(req.file.buffer)
       : await extractPdfText(req.file.buffer);
 
     if (!rawText) {
       return res.status(422).json({
-        error: 'Could not extract text. Make sure it\'s not a scanned image.',
+        error: 'Could not extract text. Try saving as PDF if Word isn\'t working.',
       });
     }
 
@@ -101,7 +149,7 @@ router.post('/parse', upload.single('resume'), async (req, res, next) => {
           role: 'user',
           content: `Extract job search parameters from this resume.
 
-Resume:
+Resume text:
 ${rawText}
 
 Return exactly this JSON:
@@ -115,7 +163,7 @@ Return exactly this JSON:
 }
 
 For suggestedExperience choose one of: "fresher", "1-3", "3-5", "5-8", "8+"
-Extract at least 5-8 specific technical/domain skills from the resume.`,
+Extract at least 5-8 specific technical/domain skills.`,
         },
       ],
     });
@@ -124,7 +172,7 @@ Extract at least 5-8 specific technical/domain skills from the resume.`,
     const clean  = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
-    console.log('[Resume] Parsed:', parsed.role, '|', parsed.city, '|', parsed.skills?.length, 'skills');
+    console.log('[Resume] Parsed:', parsed.role, '|', parsed.city, '|', (parsed.skills || []).length, 'skills');
 
     res.json({
       role:                parsed.role                || '',

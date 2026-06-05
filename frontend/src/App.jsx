@@ -24,21 +24,28 @@ export default function App() {
   const { outreachJob, outreachDraft, outreachStatus, outreachError, openOutreach, closeOutreach } = useOutreach();
   const { analyzeJob, activeTab, setActiveTab, scoreData, summaryData, scoreStatus, summaryStatus, openAnalyze, closeAnalyze } = useAnalyze();
 
-  const [mode, setMode]             = useState('role');
-  const [filter, setFilter]         = useState('all');
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [lastParams, setLastParams] = useState(null);
-  const [justSaved, setJustSaved]   = useState(false);
+  const [mode, setMode]               = useState('role');
+  const [filter, setFilter]           = useState('all');
+  const [drawerOpen, setDrawerOpen]   = useState(false);
+  const [lastParams, setLastParams]   = useState(null);
+  const [justSaved, setJustSaved]     = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [whatsAppJob, setWhatsAppJob]   = useState(null);
-  const resumeDataRef = useRef(null);
+  const [whatsAppJob, setWhatsAppJob] = useState(null);
+
+  // Use state (not ref) so JobGrid re-renders when resume changes
+  const [resumeData, setResumeData]   = useState(null);
 
   const active = mode === 'role' ? roleSearch : companySearch;
   const { jobs, meta, status } = active;
 
   function handleModeChange(newMode) {
-    setMode(newMode); setFilter('all'); setLastParams(null);
-    roleSearch.reset?.(); companySearch.reset?.();
+    setMode(newMode);
+    setFilter('all');
+    setLastParams(null);
+    roleSearch.reset?.();
+    companySearch.reset?.();
+    // Don't clear resumeData on mode switch — user may want score in company mode too
+    // But only pass it to JobGrid in role mode (per original design)
   }
 
   async function handleRoleSearch(params, isRefresh = false) {
@@ -75,11 +82,11 @@ export default function App() {
   }
 
   function handleResumeExtracted(data) {
-    resumeDataRef.current = data;
+    setResumeData(data); // state update triggers re-render
   }
 
   function handleAnalyze(job, tab) {
-    openAnalyze(job, resumeDataRef.current, tab);
+    openAnalyze(job, resumeData, tab);
   }
 
   const showResults = status === 'loading' || status === 'success' || status === 'error';
@@ -105,9 +112,16 @@ export default function App() {
         <div className="search-wrap">
           <ModeToggle mode={mode} onChange={handleModeChange} />
           {mode === 'role' ? (
-            <SearchPanel onSearch={handleRoleSearch} loading={status === 'loading' && mode === 'role'} onResumeExtracted={handleResumeExtracted} />
+            <SearchPanel
+              onSearch={handleRoleSearch}
+              loading={status === 'loading' && mode === 'role'}
+              onResumeExtracted={handleResumeExtracted}
+            />
           ) : (
-            <CompanyPanel onSearch={handleCompanySearch} loading={status === 'loading' && mode === 'company'} />
+            <CompanyPanel
+              onSearch={handleCompanySearch}
+              loading={status === 'loading' && mode === 'company'}
+            />
           )}
         </div>
 
@@ -134,9 +148,11 @@ export default function App() {
             <FilterBar active={filter} onChange={setFilter} total={jobs.length} cached={meta?.cached} />
 
             <JobGrid
-              jobs={jobs} status={status} filter={filter}
-              resume={mode === 'role' ? resumeDataRef.current : null}
-              onDraftOutreach={job => openOutreach(job, resumeDataRef.current)}
+              jobs={jobs}
+              status={status}
+              filter={filter}
+              resume={mode === 'role' ? resumeData : null}
+              onDraftOutreach={job => openOutreach(job, resumeData)}
               onAnalyze={handleAnalyze}
               onWhatsApp={job => setWhatsAppJob(job)}
             />
@@ -153,11 +169,8 @@ export default function App() {
       </main>
 
       {drawerOpen && <SavedSearches saved={saved} onLoad={handleLoadSaved} onRemove={removeSearch} onClearAll={clearAll} onClose={() => setDrawerOpen(false)} />}
-
       {outreachJob && <OutreachModal job={outreachJob} draft={outreachDraft} status={outreachStatus} error={outreachError} onClose={closeOutreach} />}
-
       {analyzeJob && <AnalyzeModal job={analyzeJob} activeTab={activeTab} onTabChange={setActiveTab} scoreData={scoreData} summaryData={summaryData} scoreStatus={scoreStatus} summaryStatus={summaryStatus} onClose={closeAnalyze} />}
-
       {whatsAppJob && <WhatsAppShare job={whatsAppJob} onClose={() => setWhatsAppJob(null)} />}
     </div>
   );
