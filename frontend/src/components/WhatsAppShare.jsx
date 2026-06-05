@@ -91,12 +91,12 @@ export function WhatsAppShare({ job, onClose }) {
   }
 
   function openForNumber(number) {
-    window.open(waWebLink(number), '_blank', 'noopener');
+    window.open(waWebLink(number), 'whatsapp_web', 'noopener');
   }
 
   function openAll() {
     numbers.forEach((num, i) => {
-      setTimeout(() => window.open(waWebLink(num), '_blank', 'noopener'), i * 900);
+      setTimeout(() => window.open(waWebLink(num), 'whatsapp_web_' + i, 'noopener'), i * 900);
     });
   }
 
