@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 const STORAGE_KEY = 'jobscout:whatsapp-numbers';
 const APP_URL     = 'https://jobscout-ai.vercel.app';
 
+// Single persistent reference to the WhatsApp Web tab
+let waTab = null;
+
 function loadNumbers() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
   catch { return []; }
@@ -19,6 +22,7 @@ export function WhatsAppShare({ job, onClose }) {
   const [editVal, setEditVal] = useState('');
   const [error,   setError]   = useState('');
   const [copied,  setCopied]  = useState(false);
+  const [sentIdx, setSentIdx] = useState([]);
 
   useEffect(() => { saveNumbers(numbers); }, [numbers]);
 
@@ -39,11 +43,48 @@ export function WhatsAppShare({ job, onClose }) {
 
   const encodedMsg = encodeURIComponent(messageText);
 
-  // ── KEY CHANGE: web.whatsapp.com instead of api.whatsapp.com ──────────
-  // web.whatsapp.com opens directly in browser — no "Open app?" prompt ever.
-  // User must be logged into WhatsApp Web once (stays logged in permanently).
-  function waWebLink(number) {
+  function waUrl(number) {
     return `https://web.whatsapp.com/send?phone=${number}&text=${encodedMsg}`;
+  }
+
+  // ── The key fix: reuse the same tab by keeping a module-level reference ──
+  // noopener is intentionally omitted — it prevents tab reuse by name
+  function openInWaTab(number) {
+    const url = waUrl(number);
+    if (waTab && !waTab.closed) {
+      // Tab already open — just navigate it to the new number
+      waTab.location.href = url;
+      waTab.focus();
+    } else {
+      // First time — open a new tab and remember it
+      waTab = window.open(url, 'jobscout_wa');
+    }
+    setSentIdx(prev => [...new Set([...prev])]);
+  }
+
+  function sendToNumber(number, idx) {
+    openInWaTab(number);
+    setSentIdx(prev => [...new Set([...prev, idx])]);
+  }
+
+  function sendAll() {
+    // Send to first contact immediately, then cycle through rest with delay
+    numbers.forEach((num, i) => {
+      if (i === 0) {
+        openInWaTab(num);
+        setSentIdx(prev => [...new Set([...prev, 0])]);
+      } else {
+        setTimeout(() => {
+          if (waTab && !waTab.closed) {
+            waTab.location.href = waUrl(num);
+            waTab.focus();
+          } else {
+            waTab = window.open(waUrl(num), 'jobscout_wa');
+          }
+          setSentIdx(prev => [...new Set([...prev, i])]);
+        }, i * 3000); // 3 sec gap — gives time to actually send each message
+      }
+    });
   }
 
   function cleanNumber(raw) {
@@ -55,9 +96,7 @@ export function WhatsAppShare({ job, onClose }) {
   }
 
   function formatDisplay(num) {
-    if (num.startsWith('91') && num.length === 12) {
-      return `+91 ${num.slice(2, 7)} ${num.slice(7)}`;
-    }
+    if (num.startsWith('91') && num.length === 12) return `+91 ${num.slice(2, 7)} ${num.slice(7)}`;
     return `+${num}`;
   }
 
@@ -72,10 +111,10 @@ export function WhatsAppShare({ job, onClose }) {
 
   function removeNumber(i) {
     setNumbers(prev => prev.filter((_, idx) => idx !== i));
+    setSentIdx(prev => prev.filter(s => s !== i));
   }
 
   function startEdit(i) { setEditing(i); setEditVal(numbers[i]); }
-
   function saveEdit(i) {
     const clean = cleanNumber(editVal.trim());
     if (clean.length < 10) { setError('Invalid number'); return; }
@@ -90,16 +129,6 @@ export function WhatsAppShare({ job, onClose }) {
     });
   }
 
-  function openForNumber(number) {
-    window.open(waWebLink(number), 'whatsapp_web', 'noopener');
-  }
-
-  function openAll() {
-    numbers.forEach((num, i) => {
-      setTimeout(() => window.open(waWebLink(num), 'whatsapp_web_' + i, 'noopener'), i * 900);
-    });
-  }
-
   return (
     <>
       <div className="modal-backdrop" onClick={onClose} />
@@ -107,45 +136,32 @@ export function WhatsAppShare({ job, onClose }) {
         <div className="modal-header">
           <div>
             <div className="modal-pretitle" style={{ color: '#25D366' }}>📲 WhatsApp Share</div>
-            <div className="modal-title">
-              {job.title} at <strong>{job.company}</strong>
-            </div>
+            <div className="modal-title">{job.title} at <strong>{job.company}</strong></div>
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
         <div className="modal-body">
-          {/* Message preview */}
+          {/* Preview */}
           <div className="wa-preview">
-            <div className="wa-preview-label">Message preview</div>
-            <div className="wa-preview-box" style={{ whiteSpace: 'pre-line' }}>
-              {messageText}
-            </div>
+            <div class="wa-preview-label">Message preview</div>
+            <div className="wa-preview-box" style={{ whiteSpace: 'pre-line' }}>{messageText}</div>
             <button className={`btn-copy-msg ${copied ? 'copied' : ''}`} onClick={copyMessage}>
               {copied ? '✅ Copied!' : '📋 Copy message'}
             </button>
           </div>
 
-          {/* WhatsApp Web tip */}
           <div className="wa-tip">
-            🌐 Opens in <strong>WhatsApp Web</strong> — no desktop app, no prompts.
-            Log in to <a href="https://web.whatsapp.com" target="_blank" rel="noopener" style={{color:'#25D366'}}>web.whatsapp.com</a> once and it stays logged in.
+            🌐 Opens in <strong>WhatsApp Web</strong> — one tab, reused each time. Log in at <a href="https://web.whatsapp.com" target="_blank" rel="noopener" style={{color:'#25D366'}}>web.whatsapp.com</a> once.
           </div>
 
           {/* Add number */}
           <div className="wa-add-row">
-            <input
-              type="tel"
-              className="text-input"
-              value={input}
+            <input type="tel" className="text-input" value={input}
               onChange={e => { setInput(e.target.value); setError(''); }}
               onKeyDown={e => e.key === 'Enter' && addNumber()}
-              placeholder="10-digit mobile number"
-              maxLength={13}
-            />
-            <button className="btn-add" onClick={addNumber} disabled={numbers.length >= 5}>
-              + Add
-            </button>
+              placeholder="10-digit mobile number" maxLength={13} />
+            <button className="btn-add" onClick={addNumber} disabled={numbers.length >= 5}>+ Add</button>
           </div>
           {error && <div className="wa-error">{error}</div>}
           <div className="wa-limit-hint">{numbers.length}/5 contacts saved</div>
@@ -166,9 +182,14 @@ export function WhatsAppShare({ job, onClose }) {
                     <>
                       <span className="wa-number-display">{formatDisplay(num)}</span>
                       <div className="wa-actions">
-                        <button className="wa-edit"   onClick={() => startEdit(i)}    title="Edit">✏️</button>
+                        <button className="wa-edit" onClick={() => startEdit(i)} title="Edit">✏️</button>
                         <button className="wa-remove" onClick={() => removeNumber(i)} title="Remove">✕</button>
-                        <button className="wa-send-btn" onClick={() => openForNumber(num)}>Send</button>
+                        <button
+                          className={`wa-send-btn ${sentIdx.includes(i) ? 'sent' : ''}`}
+                          onClick={() => sendToNumber(num, i)}
+                        >
+                          {sentIdx.includes(i) ? '✅ Sent' : 'Send'}
+                        </button>
                       </div>
                     </>
                   )}
@@ -178,16 +199,13 @@ export function WhatsAppShare({ job, onClose }) {
           )}
 
           {numbers.length > 1 && (
-            <button className="btn-wa-all" onClick={openAll}>
-              📲 Send to all {numbers.length} contacts
+            <button className="btn-wa-all" onClick={sendAll}>
+              📲 Send to all {numbers.length} — same tab, auto-cycles
             </button>
           )}
 
           {numbers.length === 0 && (
-            <div className="wa-empty">
-              Add up to 5 contacts above.<br />
-              Numbers are remembered for next time.
-            </div>
+            <div className="wa-empty">Add up to 5 contacts above.<br />Numbers are remembered for next time.</div>
           )}
         </div>
       </div>
