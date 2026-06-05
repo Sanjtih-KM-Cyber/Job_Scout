@@ -1,8 +1,8 @@
 // frontend/src/components/WhatsAppShare.jsx
 import { useState, useEffect } from 'react';
 
-const STORAGE_KEY  = 'jobscout:whatsapp-numbers';
-const APP_URL      = 'job-scout-seven.vercel.app'; // ← update to your actual Vercel URL
+const STORAGE_KEY = 'jobscout:whatsapp-numbers';
+const APP_URL     = 'https://jobscout-ai.vercel.app';
 
 function loadNumbers() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
@@ -22,21 +22,28 @@ export function WhatsAppShare({ job, onClose }) {
 
   useEffect(() => { saveNumbers(numbers); }, [numbers]);
 
-  const jobUrl  = job.sourceUrl || buildFallbackLink(job);
+  const jobUrl = job.sourceUrl || buildFallbackLink(job);
 
-  // Plain text message — no markdown, emojis as actual Unicode characters
-  const messageText =
-    `Hey! Found a job that might interest you:\n\n` +
-    `\uD83D\uDCBC ${job.title} at ${job.company}\n` +
-    `\uD83D\uDCCD ${job.city || 'India'}\n` +
-    (job.salary ? `\uD83D\uDCB0 ${job.salary}\n` : '') +
-    `\n\uD83D\uDD17 Apply here: ${jobUrl}\n\n` +
-    `Found on JobScout AI \u2192 ${APP_URL}`;
+  const salary = job.salary ? `💰 ${job.salary}\n` : '';
+  const messageText = [
+    `Hey! Found a job that might interest you:`,
+    ``,
+    `💼 ${job.title} at ${job.company}`,
+    `📍 ${job.city || 'India'}`,
+    salary.trim(),
+    ``,
+    `🔗 Apply here: ${jobUrl}`,
+    ``,
+    `Found on JobScout AI → ${APP_URL}`,
+  ].join('\n').replace(/\n{3,}/g, '\n\n');
 
   const encodedMsg = encodeURIComponent(messageText);
 
-  function waLink(number) {
-    return `https://api.whatsapp.com/send?phone=${number}&text=${encodedMsg}`;
+  // ── KEY CHANGE: web.whatsapp.com instead of api.whatsapp.com ──────────
+  // web.whatsapp.com opens directly in browser — no "Open app?" prompt ever.
+  // User must be logged into WhatsApp Web once (stays logged in permanently).
+  function waWebLink(number) {
+    return `https://web.whatsapp.com/send?phone=${number}&text=${encodedMsg}`;
   }
 
   function cleanNumber(raw) {
@@ -83,18 +90,13 @@ export function WhatsAppShare({ job, onClose }) {
     });
   }
 
-  // Open WhatsApp Web once — user stays logged in across all sends
-  // Uses api.whatsapp.com (not wa.me) which reuses existing WA Web session
   function openForNumber(number) {
-    window.open(waLink(number), '_blank', 'noopener');
+    window.open(waWebLink(number), '_blank', 'noopener');
   }
 
   function openAll() {
-    // Open first immediately, rest with delay so browser doesn't block popups
     numbers.forEach((num, i) => {
-      setTimeout(() => {
-        window.open(waLink(num), '_blank', 'noopener');
-      }, i * 1000);
+      setTimeout(() => window.open(waWebLink(num), '_blank', 'noopener'), i * 900);
     });
   }
 
@@ -104,13 +106,7 @@ export function WhatsAppShare({ job, onClose }) {
       <div className="modal whatsapp-modal" role="dialog">
         <div className="modal-header">
           <div>
-            <div className="modal-pretitle" style={{ color: '#25D366' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366" style={{marginRight:5,verticalAlign:'middle'}}>
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.523 5.84L0 24l6.341-1.489A11.946 11.946 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.882a9.875 9.875 0 01-5.031-1.373l-.361-.214-3.741.979 1.003-3.653-.235-.374A9.857 9.857 0 012.118 12C2.118 6.539 6.539 2.118 12 2.118c5.46 0 9.882 4.421 9.882 9.882 0 5.46-4.422 9.882-9.882 9.882z"/>
-              </svg>
-              WhatsApp Share
-            </div>
+            <div className="modal-pretitle" style={{ color: '#25D366' }}>📲 WhatsApp Share</div>
             <div className="modal-title">
               {job.title} at <strong>{job.company}</strong>
             </div>
@@ -119,26 +115,21 @@ export function WhatsAppShare({ job, onClose }) {
         </div>
 
         <div className="modal-body">
-
           {/* Message preview */}
           <div className="wa-preview">
             <div className="wa-preview-label">Message preview</div>
-            <div className="wa-preview-box">
-              💼 {job.title} at {job.company}<br />
-              📍 {job.city || 'India'}{job.salary ? ` · 💰 ${job.salary}` : ''}<br />
-              🔗 Apply link + JobScout AI link included
+            <div className="wa-preview-box" style={{ whiteSpace: 'pre-line' }}>
+              {messageText}
             </div>
-            <button
-              className={`btn-copy-msg ${copied ? 'copied' : ''}`}
-              onClick={copyMessage}
-            >
-              {copied ? '✅ Copied!' : '📋 Copy message text'}
+            <button className={`btn-copy-msg ${copied ? 'copied' : ''}`} onClick={copyMessage}>
+              {copied ? '✅ Copied!' : '📋 Copy message'}
             </button>
           </div>
 
-          {/* Tip */}
+          {/* WhatsApp Web tip */}
           <div className="wa-tip">
-            💡 <strong>Tip:</strong> WhatsApp Web stays logged in after the first open — subsequent contacts open instantly in the same session.
+            🌐 Opens in <strong>WhatsApp Web</strong> — no desktop app, no prompts.
+            Log in to <a href="https://web.whatsapp.com" target="_blank" rel="noopener" style={{color:'#25D366'}}>web.whatsapp.com</a> once and it stays logged in.
           </div>
 
           {/* Add number */}
@@ -159,7 +150,6 @@ export function WhatsAppShare({ job, onClose }) {
           {error && <div className="wa-error">{error}</div>}
           <div className="wa-limit-hint">{numbers.length}/5 contacts saved</div>
 
-          {/* Numbers list */}
           {numbers.length > 0 && (
             <ul className="wa-numbers">
               {numbers.map((num, i) => (
@@ -176,11 +166,9 @@ export function WhatsAppShare({ job, onClose }) {
                     <>
                       <span className="wa-number-display">{formatDisplay(num)}</span>
                       <div className="wa-actions">
-                        <button className="wa-edit" onClick={() => startEdit(i)} title="Edit">✏️</button>
+                        <button className="wa-edit"   onClick={() => startEdit(i)}    title="Edit">✏️</button>
                         <button className="wa-remove" onClick={() => removeNumber(i)} title="Remove">✕</button>
-                        <button className="wa-send-btn" onClick={() => openForNumber(num)}>
-                          Send
-                        </button>
+                        <button className="wa-send-btn" onClick={() => openForNumber(num)}>Send</button>
                       </div>
                     </>
                   )}
@@ -191,11 +179,7 @@ export function WhatsAppShare({ job, onClose }) {
 
           {numbers.length > 1 && (
             <button className="btn-wa-all" onClick={openAll}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.523 5.84L0 24l6.341-1.489A11.946 11.946 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.882a9.875 9.875 0 01-5.031-1.373l-.361-.214-3.741.979 1.003-3.653-.235-.374A9.857 9.857 0 012.118 12C2.118 6.539 6.539 2.118 12 2.118c5.46 0 9.882 4.421 9.882 9.882 0 5.46-4.422 9.882-9.882 9.882z"/>
-              </svg>
-              Send to all {numbers.length} contacts
+              📲 Send to all {numbers.length} contacts
             </button>
           )}
 
