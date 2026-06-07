@@ -110,15 +110,28 @@ export function WhatsAppShare({ job, onClose }) {
 
   function cleanNumber(raw) {
     const digits = raw.replace(/\D/g, '');
-    if (digits.length === 10) return `91${digits}`;
+    // Already full international format with 91
     if (digits.length === 12 && digits.startsWith('91')) return digits;
+    // 10-digit Indian mobile number
+    if (digits.length === 10) return `91${digits}`;
+    // With leading 0
     if (digits.length === 11 && digits.startsWith('0')) return `91${digits.slice(1)}`;
+    // With +91 already giving 13 chars like 919...
+    if (digits.length === 13 && digits.startsWith('91')) return digits.slice(0, 12);
+    // Fallback — return as is but only if looks valid
+    if (digits.length >= 10) return digits.slice(-12);
     return digits;
   }
 
   function formatDisplay(num) {
-    if (num.startsWith('91') && num.length === 12) return `+91 ${num.slice(2, 7)} ${num.slice(7)}`;
-    return `+${num}`;
+    const digits = (num || '').replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) {
+      return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+    }
+    if (digits.length === 10) {
+      return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+    }
+    return `+${digits}`;
   }
 
   function addNumber() {
@@ -138,7 +151,7 @@ export function WhatsAppShare({ job, onClose }) {
   function startEdit(i) { setEditing(i); setEditVal(numbers[i]); }
   function saveEdit(i) {
     const clean = cleanNumber(editVal.trim());
-    if (clean.length < 10) { setError('Invalid number'); return; }
+    if (clean.length < 10 || clean.length > 13) { setError('Invalid number'); return; }
     setNumbers(prev => prev.map((n, idx) => idx === i ? clean : n));
     setEditing(null); setEditVal(''); setError('');
   }
