@@ -17,14 +17,15 @@ function saveNumbers(nums) {
 }
 
 export function WhatsAppShare({ job, onClose }) {
-  const [numbers, setNumbers] = useState(loadNumbers);
-  const [input,   setInput]   = useState('');
-  const [editing, setEditing] = useState(null);
-  const [editVal, setEditVal] = useState('');
-  const [error,   setError]   = useState('');
-  const [copied,  setCopied]  = useState(false);
-  const [sentIdx, setSentIdx] = useState([]);
-  const [sending, setSending] = useState(false);
+  const [numbers,      setNumbers]      = useState(loadNumbers);
+  const [input,        setInput]        = useState('');
+  const [editing,      setEditing]      = useState(null);
+  const [editVal,      setEditVal]      = useState('');
+  const [error,        setError]        = useState('');
+  const [copied,       setCopied]       = useState(false);
+  const [sentIdx,      setSentIdx]      = useState([]);
+  // Mobile: queue mode — shows which contact to send to next
+  const [mobileQueue,  setMobileQueue]  = useState(null); // null | number index
 
   useEffect(() => { saveNumbers(numbers); }, [numbers]);
 
@@ -46,61 +47,65 @@ export function WhatsAppShare({ job, onClose }) {
   const mobile = isMobile();
 
   function waUrl(number) {
-    return mobile
-      ? `whatsapp://send?phone=${number}&text=${encodedMsg}`
-      : `https://web.whatsapp.com/send?phone=${number}&text=${encodedMsg}`;
+    if (mobile) {
+      // Deep link opens WhatsApp app directly on phone
+      return `whatsapp://send?phone=${number}&text=${encodedMsg}`;
+    }
+    // Desktop: wa.me opens in WhatsApp Web, unique tab per contact
+    return `https://wa.me/${number}?text=${encodedMsg}`;
   }
 
-  // ── Single send ────────────────────────────────────────────────────────────
-  function sendOne(number, idx) {
-    if (mobile) {
-      window.location.href = waUrl(number);
-    } else {
-      // Desktop: open in named tab so it reuses the same tab
-      window.open(waUrl(number), 'jobscout_wa');
-    }
+  // ── Desktop: open each contact in its own uniquely named tab ────────────
+  function sendOneDesktop(number, idx) {
+    window.open(waUrl(number), `wa_${number}`);
     setSentIdx(prev => [...new Set([...prev, idx])]);
   }
 
-  // ── Send All fix ───────────────────────────────────────────────────────────
-  // Bug was: on mobile window.location.href navigates away immediately,
-  // so setTimeout for subsequent contacts never fires.
-  // Fix: on mobile open each in a new tab (user taps back between them)
-  //      on desktop open each in a new named tab sequentially
-  async function sendAll() {
-    if (sending) return;
-    setSending(true);
-
-    if (mobile) {
-      // On mobile: open each contact in a new tab
-      // User sees all WA chats open and can send from each
-      numbers.forEach((num, i) => {
-        window.open(waUrl(num), `_blank`);
-      });
-      setSentIdx(numbers.map((_, i) => i));
-    } else {
-      // On desktop: open first immediately, then navigate same tab after delay
-      // so user can actually send the message before next one loads
-      for (let i = 0; i < numbers.length; i++) {
-        const num = numbers[i];
-        if (i === 0) {
-          window.open(waUrl(num), 'jobscout_wa');
-        } else {
-          // Wait 4 seconds between each so user has time to send
-          await new Promise(r => setTimeout(r, 4000));
-          const existingTab = window.open('', 'jobscout_wa');
-          if (existingTab) {
-            existingTab.location.href = waUrl(num);
-            existingTab.focus();
-          } else {
-            window.open(waUrl(num), 'jobscout_wa');
-          }
-        }
+  function sendAllDesktop() {
+    numbers.forEach((num, i) => {
+      setTimeout(() => {
+        window.open(waUrl(num), `wa_${num}`);
         setSentIdx(prev => [...new Set([...prev, i])]);
-      }
-    }
+      }, i * 400);
+    });
+  }
 
-    setSending(false);
+  // ── Mobile: queue-based sending ─────────────────────────────────────────
+  // window.open is blocked on mobile. Instead we show a "Send to X → Next"
+  // flow. User taps Send, WA app opens, they come back, tap Next contact.
+  function startMobileQueue() {
+    // Find first unsent contact
+    const firstUnsent = numbers.findIndex((_, i) => !sentIdx.includes(i));
+    if (firstUnsent !== -1) setMobileQueue(firstUnsent);
+  }
+
+  function sendMobileCurrent() {
+    if (mobileQueue === null) return;
+    const number = numbers[mobileQueue];
+    window.location.href = waUrl(number);
+    setSentIdx(prev => [...new Set([...prev, mobileQueue])]);
+
+    // Find next unsent
+    const nextUnsent = numbers.findIndex((_, i) => i > mobileQueue && !sentIdx.includes(i));
+    setMobileQueue(nextUnsent !== -1 ? nextUnsent : null);
+  }
+
+  // ── Unified handlers ─────────────────────────────────────────────────────
+  function sendOne(number, idx) {
+    if (mobile) {
+      window.location.href = waUrl(number);
+      setSentIdx(prev => [...new Set([...prev, idx])]);
+    } else {
+      sendOneDesktop(number, idx);
+    }
+  }
+
+  function sendAll() {
+    if (mobile) {
+      startMobileQueue();
+    } else {
+      sendAllDesktop();
+    }
   }
 
   function cleanNumber(raw) {
@@ -118,9 +123,9 @@ export function WhatsAppShare({ job, onClose }) {
 
   function addNumber() {
     const clean = cleanNumber(input.trim());
-    if (clean.length < 10) { setError('Enter a valid 10-digit mobile number'); return; }
-    if (numbers.length >= 5) { setError('Maximum 5 contacts allowed'); return; }
-    if (numbers.includes(clean)) { setError('This number is already added'); return; }
+    if (clean.length < 10) { setError('Enter a valid 10-digit number'); return; }
+    if (numbers.length >= 5) { setError('Maximum 5 contacts'); return; }
+    if (numbers.includes(clean)) { setError('Already added'); return; }
     setNumbers(prev => [...prev, clean]);
     setInput(''); setError('');
   }
@@ -145,6 +150,8 @@ export function WhatsAppShare({ job, onClose }) {
     });
   }
 
+  const allSent = numbers.length > 0 && numbers.every((_, i) => sentIdx.includes(i));
+
   return (
     <>
       <div className="modal-backdrop" onClick={onClose} />
@@ -158,6 +165,7 @@ export function WhatsAppShare({ job, onClose }) {
         </div>
 
         <div className="modal-body">
+          {/* Message preview */}
           <div className="wa-preview">
             <div className="wa-preview-label">Message preview</div>
             <div className="wa-preview-box" style={{ whiteSpace: 'pre-line' }}>{messageText}</div>
@@ -166,23 +174,50 @@ export function WhatsAppShare({ job, onClose }) {
             </button>
           </div>
 
-          <div className="wa-tip">
-            {mobile
-              ? '📱 Opens WhatsApp app directly. Send All opens each contact in a new tab.'
-              : '🖥️ Opens WhatsApp Web. Send All cycles through contacts with a 4s gap to let you send.'}
-          </div>
+          {/* Mobile queue UI */}
+          {mobile && mobileQueue !== null && (
+            <div className="wa-mobile-queue">
+              <div className="wa-queue-label">
+                Sending {mobileQueue + 1} of {numbers.length}
+              </div>
+              <div className="wa-queue-number">
+                {formatDisplay(numbers[mobileQueue])}
+              </div>
+              <button className="btn-wa-queue-send" onClick={sendMobileCurrent}>
+                Open WhatsApp → Send message
+              </button>
+              <button className="wa-cancel" onClick={() => setMobileQueue(null)}>
+                Cancel queue
+              </button>
+            </div>
+          )}
 
-          <div className="wa-add-row">
-            <input type="tel" className="text-input" value={input}
-              onChange={e => { setInput(e.target.value); setError(''); }}
-              onKeyDown={e => e.key === 'Enter' && addNumber()}
-              placeholder="10-digit mobile number" maxLength={13} />
-            <button className="btn-add" onClick={addNumber} disabled={numbers.length >= 5}>+ Add</button>
-          </div>
-          {error && <div className="wa-error">{error}</div>}
-          <div className="wa-limit-hint">{numbers.length}/5 contacts saved</div>
+          {/* Tip */}
+          {mobileQueue === null && (
+            <div className="wa-tip">
+              {mobile
+                ? '📱 Opens WhatsApp app directly. For multiple contacts, tap "Send to all" then follow the queue.'
+                : '💡 Each contact opens in its own tab with the message pre-filled.'}
+            </div>
+          )}
 
-          {numbers.length > 0 && (
+          {/* Add number */}
+          {mobileQueue === null && (
+            <>
+              <div className="wa-add-row">
+                <input type="tel" className="text-input" value={input}
+                  onChange={e => { setInput(e.target.value); setError(''); }}
+                  onKeyDown={e => e.key === 'Enter' && addNumber()}
+                  placeholder="10-digit mobile number" maxLength={13} />
+                <button className="btn-add" onClick={addNumber} disabled={numbers.length >= 5}>+ Add</button>
+              </div>
+              {error && <div className="wa-error">{error}</div>}
+              <div className="wa-limit-hint">{numbers.length}/5 contacts saved</div>
+            </>
+          )}
+
+          {/* Numbers list */}
+          {mobileQueue === null && numbers.length > 0 && (
             <ul className="wa-numbers">
               {numbers.map((num, i) => (
                 <li key={num} className="wa-number-row">
@@ -214,14 +249,22 @@ export function WhatsAppShare({ job, onClose }) {
             </ul>
           )}
 
-          {numbers.length > 1 && (
-            <button className="btn-wa-all" onClick={sendAll} disabled={sending}>
-              {sending ? '⏳ Sending…' : `📲 Send to all ${numbers.length} contacts`}
+          {/* Send all button */}
+          {mobileQueue === null && numbers.length > 1 && !allSent && (
+            <button className="btn-wa-all" onClick={sendAll}>
+              📲 Send to all {numbers.length} contacts
             </button>
           )}
 
+          {allSent && numbers.length > 0 && (
+            <div className="wa-all-sent">✅ Sent to all {numbers.length} contacts!</div>
+          )}
+
           {numbers.length === 0 && (
-            <div className="wa-empty">Add up to 5 contacts above.<br />Numbers are remembered for next time.</div>
+            <div className="wa-empty">
+              Add up to 5 contacts above.<br />
+              Numbers are remembered for next time.
+            </div>
           )}
         </div>
       </div>
