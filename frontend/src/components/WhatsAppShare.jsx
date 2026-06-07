@@ -4,13 +4,9 @@ import { useState, useEffect } from 'react';
 const STORAGE_KEY = 'jobscout:whatsapp-numbers';
 const APP_URL     = 'https://job-scout-seven.vercel.app';
 
-// Detect mobile device
 function isMobile() {
   return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
 }
-
-// Module-level reference to reuse the WhatsApp Web tab on desktop
-let waTab = null;
 
 function loadNumbers() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
@@ -28,12 +24,12 @@ export function WhatsAppShare({ job, onClose }) {
   const [error,   setError]   = useState('');
   const [copied,  setCopied]  = useState(false);
   const [sentIdx, setSentIdx] = useState([]);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => { saveNumbers(numbers); }, [numbers]);
 
   const jobUrl = job.sourceUrl || buildFallbackLink(job);
   const salary = job.salary ? `💰 ${job.salary}\n` : '';
-
   const messageText = [
     `Hey! Found a job that might interest you:`,
     ``,
@@ -47,38 +43,64 @@ export function WhatsAppShare({ job, onClose }) {
   ].join('\n').replace(/\n{3,}/g, '\n\n');
 
   const encodedMsg = encodeURIComponent(messageText);
+  const mobile = isMobile();
 
-  function buildLink(number) {
-    if (isMobile()) {
-      // On mobile: open WhatsApp app directly via deep link
-      return `whatsapp://send?phone=${number}&text=${encodedMsg}`;
-    }
-    // On desktop: open WhatsApp Web in browser (reuse same tab)
-    return `https://web.whatsapp.com/send?phone=${number}&text=${encodedMsg}`;
+  function waUrl(number) {
+    return mobile
+      ? `whatsapp://send?phone=${number}&text=${encodedMsg}`
+      : `https://web.whatsapp.com/send?phone=${number}&text=${encodedMsg}`;
   }
 
-  function openWhatsApp(number, idx) {
-    if (isMobile()) {
-      // On mobile: navigate current tab or use location.href
-      // This opens WhatsApp app directly without any browser prompt
-      window.location.href = buildLink(number);
+  // ── Single send ────────────────────────────────────────────────────────────
+  function sendOne(number, idx) {
+    if (mobile) {
+      window.location.href = waUrl(number);
     } else {
-      // On desktop: reuse the same WhatsApp Web tab
-      const url = buildLink(number);
-      if (waTab && !waTab.closed) {
-        waTab.location.href = url;
-        waTab.focus();
-      } else {
-        waTab = window.open(url, 'jobscout_wa');
-      }
+      // Desktop: open in named tab so it reuses the same tab
+      window.open(waUrl(number), 'jobscout_wa');
     }
     setSentIdx(prev => [...new Set([...prev, idx])]);
   }
 
-  function sendAll() {
-    numbers.forEach((num, i) => {
-      setTimeout(() => openWhatsApp(num, i), i * (isMobile() ? 2000 : 900));
-    });
+  // ── Send All fix ───────────────────────────────────────────────────────────
+  // Bug was: on mobile window.location.href navigates away immediately,
+  // so setTimeout for subsequent contacts never fires.
+  // Fix: on mobile open each in a new tab (user taps back between them)
+  //      on desktop open each in a new named tab sequentially
+  async function sendAll() {
+    if (sending) return;
+    setSending(true);
+
+    if (mobile) {
+      // On mobile: open each contact in a new tab
+      // User sees all WA chats open and can send from each
+      numbers.forEach((num, i) => {
+        window.open(waUrl(num), `_blank`);
+      });
+      setSentIdx(numbers.map((_, i) => i));
+    } else {
+      // On desktop: open first immediately, then navigate same tab after delay
+      // so user can actually send the message before next one loads
+      for (let i = 0; i < numbers.length; i++) {
+        const num = numbers[i];
+        if (i === 0) {
+          window.open(waUrl(num), 'jobscout_wa');
+        } else {
+          // Wait 4 seconds between each so user has time to send
+          await new Promise(r => setTimeout(r, 4000));
+          const existingTab = window.open('', 'jobscout_wa');
+          if (existingTab) {
+            existingTab.location.href = waUrl(num);
+            existingTab.focus();
+          } else {
+            window.open(waUrl(num), 'jobscout_wa');
+          }
+        }
+        setSentIdx(prev => [...new Set([...prev, i])]);
+      }
+    }
+
+    setSending(false);
   }
 
   function cleanNumber(raw) {
@@ -123,8 +145,6 @@ export function WhatsAppShare({ job, onClose }) {
     });
   }
 
-  const mobile = isMobile();
-
   return (
     <>
       <div className="modal-backdrop" onClick={onClose} />
@@ -138,7 +158,6 @@ export function WhatsAppShare({ job, onClose }) {
         </div>
 
         <div className="modal-body">
-          {/* Preview */}
           <div className="wa-preview">
             <div className="wa-preview-label">Message preview</div>
             <div className="wa-preview-box" style={{ whiteSpace: 'pre-line' }}>{messageText}</div>
@@ -147,21 +166,17 @@ export function WhatsAppShare({ job, onClose }) {
             </button>
           </div>
 
-          {/* Platform tip */}
           <div className="wa-tip">
             {mobile
-              ? '📱 Opens WhatsApp app directly on your phone.'
-              : '🖥️ Opens WhatsApp Web in browser — same tab reused each time.'}
+              ? '📱 Opens WhatsApp app directly. Send All opens each contact in a new tab.'
+              : '🖥️ Opens WhatsApp Web. Send All cycles through contacts with a 4s gap to let you send.'}
           </div>
 
-          {/* Add number */}
           <div className="wa-add-row">
-            <input
-              type="tel" className="text-input" value={input}
+            <input type="tel" className="text-input" value={input}
               onChange={e => { setInput(e.target.value); setError(''); }}
               onKeyDown={e => e.key === 'Enter' && addNumber()}
-              placeholder="10-digit mobile number" maxLength={13}
-            />
+              placeholder="10-digit mobile number" maxLength={13} />
             <button className="btn-add" onClick={addNumber} disabled={numbers.length >= 5}>+ Add</button>
           </div>
           {error && <div className="wa-error">{error}</div>}
@@ -183,11 +198,11 @@ export function WhatsAppShare({ job, onClose }) {
                     <>
                       <span className="wa-number-display">{formatDisplay(num)}</span>
                       <div className="wa-actions">
-                        <button className="wa-edit" onClick={() => startEdit(i)} title="Edit">✏️</button>
-                        <button className="wa-remove" onClick={() => removeNumber(i)} title="Remove">✕</button>
+                        <button className="wa-edit" onClick={() => startEdit(i)}>✏️</button>
+                        <button className="wa-remove" onClick={() => removeNumber(i)}>✕</button>
                         <button
                           className={`wa-send-btn ${sentIdx.includes(i) ? 'sent' : ''}`}
-                          onClick={() => openWhatsApp(num, i)}
+                          onClick={() => sendOne(num, i)}
                         >
                           {sentIdx.includes(i) ? '✅ Sent' : 'Send'}
                         </button>
@@ -200,16 +215,13 @@ export function WhatsAppShare({ job, onClose }) {
           )}
 
           {numbers.length > 1 && (
-            <button className="btn-wa-all" onClick={sendAll}>
-              📲 Send to all {numbers.length} contacts
+            <button className="btn-wa-all" onClick={sendAll} disabled={sending}>
+              {sending ? '⏳ Sending…' : `📲 Send to all ${numbers.length} contacts`}
             </button>
           )}
 
           {numbers.length === 0 && (
-            <div className="wa-empty">
-              Add up to 5 contacts above.<br />
-              Numbers are remembered for next time.
-            </div>
+            <div className="wa-empty">Add up to 5 contacts above.<br />Numbers are remembered for next time.</div>
           )}
         </div>
       </div>

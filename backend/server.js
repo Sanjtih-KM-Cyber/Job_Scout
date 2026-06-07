@@ -7,15 +7,13 @@ import resumeRouter   from './routes/resume.js';
 import outreachRouter from './routes/outreach.js';
 import companyRouter  from './routes/company.js';
 import analyzeRouter  from './routes/analyze.js';
+import fetchjdRouter  from './routes/fetchjd.js';
 import healthRouter   from './routes/health.js';
 
 const app  = express();
 const PORT = process.env.PORT || 4000;
 
-// Required for Render/Railway/Heroku — trusts the X-Forwarded-For header
-// so express-rate-limit can identify real client IPs correctly
 app.set('trust proxy', 1);
-
 app.use(express.json({ limit: '10mb' }));
 app.use(cors);
 app.use(rateLimiter);
@@ -25,6 +23,7 @@ app.use('/api/resume',   resumeRouter);
 app.use('/api/outreach', outreachRouter);
 app.use('/api/company',  companyRouter);
 app.use('/api/analyze',  analyzeRouter);
+app.use('/api/fetchjd',  fetchjdRouter);
 app.use('/api/health',   healthRouter);
 
 app.use((err, req, res, _next) => {

@@ -1,26 +1,51 @@
 // frontend/src/hooks/useOutreach.js
+// Fetches real JD text first, then generates accurate outreach messages.
+
 import { useState, useCallback } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-export function useOutreach() {
-  const [outreachJob, setOutreachJob]       = useState(null);  // job currently being drafted
-  const [outreachDraft, setOutreachDraft]   = useState(null);  // { linkedin, email }
-  const [outreachStatus, setOutreachStatus] = useState('idle'); // idle|loading|success|error
-  const [outreachError, setOutreachError]   = useState(null);
+async function fetchJD(job) {
+  if (!job?.sourceUrl) return '';
+  try {
+    const res  = await fetch(`${API_BASE}/fetchjd`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: job.sourceUrl, portal: job.portal }),
+    });
+    const data = await res.json();
+    return data.jdText || '';
+  } catch {
+    return '';
+  }
+}
 
-  // Open the modal and fire the AI draft generation
+export function useOutreach() {
+  const [outreachJob,    setOutreachJob]    = useState(null);
+  const [outreachDraft,  setOutreachDraft]  = useState(null);
+  const [outreachStatus, setOutreachStatus] = useState('idle');
+  const [outreachError,  setOutreachError]  = useState(null);
+  const [jdQuality,      setJdQuality]      = useState('unknown');
+
   const openOutreach = useCallback(async (job, resume) => {
     setOutreachJob(job);
     setOutreachDraft(null);
     setOutreachStatus('loading');
     setOutreachError(null);
+    setJdQuality('unknown');
+
+    // Fetch real JD first for accurate outreach
+    const jdText = await fetchJD(job);
+    const quality = jdText.length > 100 ? 'real_jd' : 'title_only';
+    setJdQuality(quality);
+
+    console.log(`[Outreach] JD fetch: ${jdText.length} chars (${quality})`);
 
     try {
       const res = await fetch(`${API_BASE}/outreach/draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job, resume }),
+        body: JSON.stringify({ job, resume, jdText }),
       });
 
       if (!res.ok) {
@@ -42,7 +67,12 @@ export function useOutreach() {
     setOutreachDraft(null);
     setOutreachStatus('idle');
     setOutreachError(null);
+    setJdQuality('unknown');
   }, []);
 
-  return { outreachJob, outreachDraft, outreachStatus, outreachError, openOutreach, closeOutreach };
+  return {
+    outreachJob, outreachDraft, outreachStatus, outreachError,
+    jdQuality,
+    openOutreach, closeOutreach,
+  };
 }

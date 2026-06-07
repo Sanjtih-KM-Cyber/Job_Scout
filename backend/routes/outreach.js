@@ -1,6 +1,5 @@
 // backend/routes/outreach.js
-// Generates Cold DM (LinkedIn) + Cold Email using Groq
-// Better, more human-sounding copy
+// Context-aware outreach — now uses real JD text for accuracy
 
 import { Router } from 'express';
 import Groq from 'groq-sdk';
@@ -10,60 +9,61 @@ const groq   = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 router.post('/draft', async (req, res, next) => {
   try {
-    const { job, resume } = req.body;
+    const { job, resume, jdText } = req.body;
 
     if (!job?.title || !job?.company) {
       return res.status(400).json({ error: 'job.title and job.company are required' });
     }
 
-    const candidateSummary = resume?.role
+    const hasRealJD  = jdText && jdText.length > 100;
+    const hasResume  = resume?.role;
+
+    const candidateSummary = hasResume
       ? `Candidate:
 - Role: ${resume.role}
 - Experience: ${resume.experienceYears || 'Not specified'} years
-- Skills: ${(resume.skills || []).slice(0, 6).join(', ') || 'Not specified'}
+- Skills: ${(resume.skills || []).slice(0, 8).join(', ') || 'Not specified'}
 - Location: ${resume.city || 'India'}
-- Summary: ${resume.summary || 'Not provided'}`
-      : 'Candidate profile not provided — write a confident, compelling generic message.';
+${resume.summary ? `- Background: ${resume.summary}` : ''}`
+      : `Candidate: Profile not uploaded — write confident, compelling generic messages.`;
+
+    const jobContext = hasRealJD
+      ? `Job Description (real, extracted from source):\n${jdText.slice(0, 2000)}`
+      : `Job: ${job.title} at ${job.company}${job.city ? `, ${job.city}` : ''}${job.experience ? ` · ${job.experience}` : ''}${job.salary ? ` · ${job.salary}` : ''}`;
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       temperature: 0.75,
-      max_tokens: 800,
+      max_tokens: 900,
       messages: [
         {
           role: 'system',
-          content: `You write outreach messages for Indian job seekers. Your style is:
-- Warm and direct — like a smart friend reaching out, not a desperate applicant
-- Specific — always mention the exact role and a concrete skill match
-- Confident but not arrogant
-- No filler phrases like "I hope this finds you well", "I am writing to express my interest", "I would love to connect"
-- No emojis
+          content: `You write outreach messages for Indian job seekers. Rules:
+- Warm and direct — like a smart colleague reaching out, not a desperate applicant
+- ${hasRealJD ? 'Use specific details from the real JD — mention actual requirements they meet' : 'Be specific about the role and company type'}
+- ${hasResume ? 'Reference the candidate\'s actual skills and background' : 'Write a strong generic message'}
+- No filler: never say "I hope this finds you well", "I am writing to express", "I would love to connect"
+- No emojis in the messages
+- LinkedIn DM: under 300 chars, specific, direct ask
+- Email: 3-4 sentences — hook, credential, ask
 Return ONLY valid JSON.`,
         },
         {
           role: 'user',
-          content: `Write two outreach messages.
+          content: `Write outreach messages.
 
 ${candidateSummary}
 
-Job:
-- Role: ${job.title}
-- Company: ${job.company}
-- Location: ${job.city || 'India'}
-- Platform: ${job.portal || 'LinkedIn'}
-${job.salary ? `- Salary: ${job.salary}` : ''}
-${job.experience ? `- Experience needed: ${job.experience}` : ''}
+${jobContext}
 
-Guidelines:
-LinkedIn DM: Under 300 characters. Start with something specific about the role or company. End with a clear, easy ask (a quick call, a reply). Do NOT start with "Hi" or "Hello" alone.
-Cold Email: 3-4 sentences. First sentence = hook (specific insight about the company or role). Second = your most relevant credential. Third = specific ask. Sign off naturally.
+${hasRealJD ? 'Use specific requirements from the JD to show precise fit.' : ''}
 
 Return this JSON:
 {
-  "linkedin": "LinkedIn DM under 300 chars",
+  "linkedin": "LinkedIn DM under 300 chars — specific, no fluff, clear ask at end",
   "email": {
-    "subject": "Specific subject — not generic like 'Job Application'",
-    "body": "3-4 sentence email body"
+    "subject": "Specific subject line — not generic",
+    "body": "3-4 sentences: hook about role/company, your most relevant credential matching their need, clear ask"
   }
 }`,
         },
@@ -82,9 +82,7 @@ Return this JSON:
       },
     });
   } catch (err) {
-    if (err instanceof SyntaxError) {
-      return res.status(422).json({ error: 'AI response could not be parsed. Try again.' });
-    }
+    if (err instanceof SyntaxError) return res.status(422).json({ error: 'AI response could not be parsed. Try again.' });
     next(err);
   }
 });

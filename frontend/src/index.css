@@ -664,3 +664,31 @@ a { text-decoration: none; color: inherit; }
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ════════════════════════════════════════
+   JD QUALITY BADGE
+   ════════════════════════════════════════ */
+.jd-quality-badge {
+  font-size: 11px; font-weight: 500; line-height: 1.4;
+  border-radius: 7px; padding: 6px 10px; margin-bottom: 12px;
+}
+.jd-quality-badge.real {
+  background: rgba(79,255,176,0.08); border: 1px solid rgba(79,255,176,0.2);
+  color: var(--accent);
+}
+.jd-quality-badge.inferred {
+  background: rgba(255,209,102,0.08); border: 1px solid rgba(255,209,102,0.2);
+  color: #ffd166;
+}
+
+/* Modal loading/error states */
+.modal-loading {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 14px;
+  min-height: 200px; color: var(--muted); text-align: center;
+}
+.modal-error {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px;
+  min-height: 180px; color: var(--muted); text-align: center;
+}
