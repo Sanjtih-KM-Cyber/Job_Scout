@@ -29,10 +29,13 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnaly
   }
 
   const scored   = filterByQualification(jobs, resume);
-  const filtered = applyFilter(scored, filter);
+  const filtered = applyFilter(scored, filter, isViewed);
 
   if (status === 'success' && filtered.length === 0) {
-    return <div className="empty-state"><div className="empty-icon">🔍</div><h3>No results for this filter</h3><p>Try "All" or a different portal tab.</p></div>;
+    const msg = filter === 'viewed'
+      ? { icon: '👁', title: 'No viewed jobs yet', text: 'Click Apply on any job card to mark it as viewed.' }
+      : { icon: '🔍', title: 'No results for this filter', text: 'Try "All" or a different portal tab.' };
+    return <div className="empty-state"><div className="empty-icon">{msg.icon}</div><h3>{msg.title}</h3><p>{msg.text}</p></div>;
   }
 
   const hasResume   = resume && resume.role;
@@ -62,11 +65,11 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnaly
   );
 }
 
-function applyFilter(jobs, filter) {
+function applyFilter(jobs, filter, isViewed) {
   switch (filter) {
     case 'priority': return [...jobs].sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
     case 'salary':   return jobs.filter(j => j.salary);
-    case 'viewed':   return jobs.filter(j => isViewed && isViewed(j));
+    case 'viewed':   return isViewed ? jobs.filter(j => isViewed(j)) : jobs;
     case 'linkedin':
     case 'indeed':
     case 'naukri':   return jobs.filter(j => j.portal === filter);
