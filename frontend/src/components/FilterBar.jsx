@@ -3,6 +3,7 @@ const FILTERS = [
   { id: 'all',      label: 'All' },
   { id: 'priority', label: '⭐ Priority first' },
   { id: 'salary',   label: '💰 Has salary' },
+  { id: 'viewed',   label: '👁 Viewed' },
   { id: 'linkedin', label: 'LinkedIn' },
   { id: 'indeed',   label: 'Indeed' },
   { id: 'naukri',   label: 'Naukri' },

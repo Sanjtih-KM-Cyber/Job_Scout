@@ -10,19 +10,24 @@ function companyColor(name = '') {
   return palette[Math.abs(hash) % palette.length];
 }
 
-export function JobCard({ job, onDraftOutreach, onAnalyze, onWhatsApp }) {
+export function JobCard({ job, onDraftOutreach, onAnalyze, onWhatsApp, isViewed, onMarkViewed }) {
   const link        = job.sourceUrl || buildLink(job.portal, job.title, job.company, job.city);
   const initials    = (job.company || '').slice(0, 2).toUpperCase();
   const accentColor = companyColor(job.company);
   const match       = job.matchResult;
+  const viewed      = isViewed(job);
 
   function stop(e) { e.preventDefault(); e.stopPropagation(); }
 
+  function handleApply(e) {
+    e.stopPropagation();
+    onMarkViewed(job); // mark as viewed when Apply is clicked
+  }
+
   return (
-    <div className={`job-card ${job.priority ? 'priority' : ''}`}>
+    <div className={`job-card ${job.priority ? 'priority' : ''} ${viewed ? 'viewed' : ''}`}>
       {job.priority && <div className="priority-bar" />}
 
-      {/* Top row: logo + portal badge */}
       <div className="card-top">
         <div className="company-logo" style={{ color: accentColor, borderColor: `${accentColor}33` }}>
           {initials}
@@ -30,15 +35,14 @@ export function JobCard({ job, onDraftOutreach, onAnalyze, onWhatsApp }) {
         <div className="card-badges">
           <span className={`portal-badge portal-${job.portal}`}>{PORTAL_LABELS[job.portal]}</span>
           {job.priority && <span className="priority-badge">⭐</span>}
+          {viewed && <span className="viewed-badge">👁 Viewed</span>}
         </div>
       </div>
 
-      {/* Body */}
       <div className="card-body">
         <div className="job-title">{job.title}</div>
         <div className="company-name">{job.company}</div>
 
-        {/* Match badge — only when resume uploaded */}
         {match && (
           <div className="match-badge" title={match.matchedSkills?.join(', ') || 'Role alignment'}>
             <div className="match-bar">
@@ -58,11 +62,8 @@ export function JobCard({ job, onDraftOutreach, onAnalyze, onWhatsApp }) {
         </div>
       </div>
 
-      {/* Footer: posted time + action icons row + apply */}
       <div className="card-footer">
         <span className="posted-time">🕐 {job.posted}</span>
-
-        {/* Action icons — compact icon-only buttons */}
         <div className="card-actions">
           <button className="btn-icon" onClick={e => { stop(e); onAnalyze(job, 'summary'); }} title="Summarise JD">📋</button>
           <button className="btn-icon" onClick={e => { stop(e); onAnalyze(job, 'score'); }} title="Resume score">📊</button>
@@ -73,7 +74,13 @@ export function JobCard({ job, onDraftOutreach, onAnalyze, onWhatsApp }) {
             </svg>
           </button>
           <button className="btn-icon" onClick={e => { stop(e); onDraftOutreach(job); }} title="Draft outreach">✍️</button>
-          <a className="btn-apply" href={link} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+          <a
+            className="btn-apply"
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={handleApply}
+          >
             Apply ↗
           </a>
         </div>

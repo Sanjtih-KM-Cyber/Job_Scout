@@ -15,6 +15,7 @@ import { useCompanySearch } from './hooks/useCompanySearch.js';
 import { useSavedSearches } from './hooks/useSavedSearches.js';
 import { useOutreach }      from './hooks/useOutreach.js';
 import { useAnalyze }       from './hooks/useAnalyze.js';
+import { useViewedJobs }   from './hooks/useViewedJobs.js';
 
 export default function App() {
   const { theme, toggle: toggleTheme }                = useTheme();
@@ -155,6 +156,8 @@ export default function App() {
               onDraftOutreach={job => openOutreach(job, resumeData)}
               onAnalyze={handleAnalyze}
               onWhatsApp={job => setWhatsAppJob(job)}
+              isViewed={isViewed}
+              onMarkViewed={markViewed}
             />
           </div>
         )}

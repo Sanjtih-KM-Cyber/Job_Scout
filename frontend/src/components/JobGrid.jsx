@@ -20,7 +20,7 @@ function SkeletonCard() {
   );
 }
 
-export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnalyze, onWhatsApp }) {
+export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnalyze, onWhatsApp, isViewed, onMarkViewed }) {
   if (status === 'loading') {
     return <div className="job-grid">{Array.from({ length: 9 }).map((_, i) => <SkeletonCard key={i} />)}</div>;
   }
@@ -35,8 +35,8 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnaly
     return <div className="empty-state"><div className="empty-icon">🔍</div><h3>No results for this filter</h3><p>Try "All" or a different portal tab.</p></div>;
   }
 
-  const hasResume    = resume && resume.role;
-  const goodMatches  = hasResume ? scored.filter(j => j.matchResult && j.matchResult.score >= 50).length : 0;
+  const hasResume   = resume && resume.role;
+  const goodMatches = hasResume ? scored.filter(j => j.matchResult && j.matchResult.score >= 50).length : 0;
 
   return (
     <>
@@ -53,6 +53,8 @@ export function JobGrid({ jobs, status, filter, resume, onDraftOutreach, onAnaly
             onDraftOutreach={onDraftOutreach}
             onAnalyze={onAnalyze}
             onWhatsApp={onWhatsApp}
+            isViewed={isViewed}
+            onMarkViewed={onMarkViewed}
           />
         ))}
       </div>
@@ -64,6 +66,7 @@ function applyFilter(jobs, filter) {
   switch (filter) {
     case 'priority': return [...jobs].sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
     case 'salary':   return jobs.filter(j => j.salary);
+    case 'viewed':   return jobs.filter(j => isViewed && isViewed(j));
     case 'linkedin':
     case 'indeed':
     case 'naukri':   return jobs.filter(j => j.portal === filter);
