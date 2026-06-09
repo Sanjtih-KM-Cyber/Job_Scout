@@ -23,7 +23,8 @@ export default function App() {
   const companySearch = useCompanySearch();
   const { saved, saveSearch, removeSearch, clearAll } = useSavedSearches();
   const { outreachJob, outreachDraft, outreachStatus, outreachError, openOutreach, closeOutreach } = useOutreach();
-  const { analyzeJob, activeTab, setActiveTab, scoreData, summaryData, scoreStatus, summaryStatus, openAnalyze, closeAnalyze } = useAnalyze();
+  const { isViewed, markViewed, clearViewed, viewedCount } = useViewedJobs();
+    const { analyzeJob, activeTab, setActiveTab, scoreData, summaryData, scoreStatus, summaryStatus, openAnalyze, closeAnalyze } = useAnalyze();
 
   const [mode, setMode]               = useState('role');
   const [filter, setFilter]           = useState('all');
