@@ -24,6 +24,7 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
       role,
       city,
       experience        = 'any',
+      experienceYears   = null,
       priorityCompanies = [],
       excludeCompanies  = [],
       refreshPage       = 1,
@@ -86,7 +87,7 @@ router.post('/', cacheMiddleware, async (req, res, next) => {
     const payload = {
       jobs,
       meta: {
-        role: role.trim(), city: city.trim(), experience,
+        role: role.trim(), city: city.trim(), experience, experienceYears,
         priorityCompanies, total: jobs.length,
         timestamp: new Date().toISOString(),
         portals: ['linkedin', 'indeed', 'naukri'],
